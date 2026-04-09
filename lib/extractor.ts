@@ -1,0 +1,55 @@
+import type { Paragraph, ArticleMetadata, ExtractedArticle } from './types'
+
+const TEXT_BLOCK_TAGS = new Set([
+  'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+  'LI', 'BLOCKQUOTE', 'TD', 'TH', 'FIGCAPTION', 'DT', 'DD',
+])
+
+const SKIP_TAGS = new Set([
+  'PRE', 'CODE', 'SCRIPT', 'STYLE', 'NOSCRIPT',
+  'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON',
+  'SVG', 'CANVAS', 'VIDEO', 'AUDIO', 'IFRAME',
+])
+
+export function shouldSkipNode(el: Element): boolean {
+  if (el.hasAttribute('data-contexta')) return true
+  if (SKIP_TAGS.has(el.tagName)) return true
+  if (el.closest('pre, code')) return true
+  const text = el.textContent?.trim() ?? ''
+  if (text.length === 0) return true
+  return false
+}
+
+export function extractParagraphs(container: Element): Paragraph[] {
+  const nodes: { el: Element; text: string; tagName: string }[] = []
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+    acceptNode(node) {
+      const el = node as Element
+      if (SKIP_TAGS.has(el.tagName)) return NodeFilter.FILTER_REJECT
+      if (el.hasAttribute('data-contexta')) return NodeFilter.FILTER_REJECT
+      if (TEXT_BLOCK_TAGS.has(el.tagName)) return NodeFilter.FILTER_ACCEPT
+      return NodeFilter.FILTER_SKIP
+    },
+  })
+
+  let node: Node | null
+  while ((node = walker.nextNode())) {
+    const el = node as Element
+    const text = el.textContent?.trim() ?? ''
+    if (text.length === 0) continue
+    nodes.push({ el, text, tagName: el.tagName })
+  }
+
+  return nodes.map((n, i) => {
+    const id = `ctx-${i}-${Date.now()}`
+    n.el.setAttribute('data-contexta-id', id)
+    return {
+      id,
+      text: n.text,
+      tagName: n.tagName,
+      prev: i > 0 ? nodes[i - 1].text : undefined,
+      next: i < nodes.length - 1 ? nodes[i + 1].text : undefined,
+    }
+  })
+}
