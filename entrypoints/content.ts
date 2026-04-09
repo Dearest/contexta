@@ -56,8 +56,7 @@ export default defineContentScript({
 
     async function handleExtract() {
       const { default: Defuddle } = await import('defuddle')
-      const clonedDoc = document.cloneNode(true) as Document
-      const result = new Defuddle(clonedDoc).parse()
+      const result = new Defuddle(document).parse()
 
       // Find the content area in the real DOM
       const contentContainer = findContentContainer(result.content)
