@@ -6,35 +6,31 @@ interface UserPromptParams {
 }
 
 export function buildSystemPrompt(targetLang: string, presetRules: string): string {
-  return `你是一位精通${targetLang}的专业翻译。
+  return `你是一位精通${targetLang}的专业翻译。翻译<source>标签内的文本为${targetLang}，仅输出译文。
 
-翻译规则：
-- 技术术语、产品名、公司名保留英文原文（如 Transformer、OpenAI、Token）
+规则：
+- 技术术语、产品名、公司名保留英文原文
 - 代码、变量名、命令、URL 不翻译
-- 全角括号换成半角括号，半角括号前后各加一个半角空格
-- 英文术语与中文之间加一个半角空格
-- 保留原始 Markdown 格式
-- 仅输出译文，不要解释或附加内容
+- 英文术语与中文之间加半角空格
+- 仅输出译文，不要输出XML标签、解释或附加内容
 ${presetRules ? '\n' + presetRules : ''}
-策略：先直译，确保信息完整；再基于直译结果意译，使表达自然流畅，符合${targetLang}表达习惯。仅输出最终意译结果。`
+<context>标签内是上下文，仅供参考，不要翻译。
+策略：先直译确保完整，再意译使表达自然流畅。仅输出最终意译结果。`
 }
 
 export function buildUserPrompt(params: UserPromptParams): string {
   const parts: string[] = []
-  parts.push(`[文章标题] ${params.title}`)
-  if (params.prev) {
+
+  if (params.prev || params.next) {
+    parts.push('<context>')
+    if (params.prev) parts.push(`前文：${params.prev}`)
+    if (params.next) parts.push(`后文：${params.next}`)
+    parts.push('</context>')
     parts.push('')
-    parts.push('[上文（仅供参考，不翻译）]')
-    parts.push(params.prev)
   }
-  parts.push('')
-  parts.push('[请翻译以下段落]')
-  parts.push(params.current)
-  if (params.next) {
-    parts.push('')
-    parts.push('[下文（仅供参考，不翻译）]')
-    parts.push(params.next)
-  }
+
+  parts.push(`<source>${params.current}</source>`)
+
   return parts.join('\n')
 }
 

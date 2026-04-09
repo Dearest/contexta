@@ -22,43 +22,34 @@ describe('buildSystemPrompt', () => {
 })
 
 describe('buildUserPrompt', () => {
-  it('includes current paragraph', () => {
+  it('wraps current paragraph in source tags', () => {
     const result = buildUserPrompt({
       title: 'Test Article',
       current: 'Hello world',
     })
-    expect(result).toContain('[请翻译以下段落]')
-    expect(result).toContain('Hello world')
+    expect(result).toContain('<source>Hello world</source>')
   })
 
-  it('includes context when provided', () => {
+  it('includes context in context tags when provided', () => {
     const result = buildUserPrompt({
       title: 'Test',
       current: 'Middle paragraph',
       prev: 'Previous text',
       next: 'Next text',
     })
-    expect(result).toContain('[上文')
-    expect(result).toContain('Previous text')
-    expect(result).toContain('[下文')
-    expect(result).toContain('Next text')
+    expect(result).toContain('<context>')
+    expect(result).toContain('前文：Previous text')
+    expect(result).toContain('后文：Next text')
+    expect(result).toContain('</context>')
   })
 
-  it('omits context sections when not provided', () => {
+  it('omits context tags when no context provided', () => {
     const result = buildUserPrompt({
       title: 'Test',
       current: 'Only paragraph',
     })
-    expect(result).not.toContain('[上文')
-    expect(result).not.toContain('[下文')
-  })
-
-  it('includes article title', () => {
-    const result = buildUserPrompt({
-      title: 'Attention Is All You Need',
-      current: 'Some text',
-    })
-    expect(result).toContain('[文章标题] Attention Is All You Need')
+    expect(result).not.toContain('<context>')
+    expect(result).not.toContain('</context>')
   })
 })
 
