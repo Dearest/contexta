@@ -13,6 +13,7 @@ npx vitest run tests/prompts.test.ts -t "includes target language"  # Single tes
 npm run compile      # TypeScript type check (no emit)
 ```
 
+always run `npm run build` after making changes to source files
 Load the extension in Chrome: `chrome://extensions` → "Load unpacked" → select `dist/chrome-mv3/`.
 
 ## Architecture
@@ -32,17 +33,17 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 
 ## Key Modules (lib/)
 
-| Module | Role |
-|--------|------|
-| `types.ts` | All shared types + `Message` discriminated union (the message protocol) |
-| `constants.ts` | 4 preset providers (智谱/硅基/Kimi/MiniMax), 4 translation presets, defaults |
-| `storage.ts` | Typed `getStorage`/`setStorage` wrappers over `chrome.storage.local` |
-| `prompts.ts` | Pure functions: `buildSystemPrompt`, `buildUserPrompt`, `buildSummaryPrompt`, `buildQuotesPrompt` |
-| `translator.ts` | `translateParagraph()` via Vercel AI SDK `generateText()` with `@ai-sdk/openai-compatible` |
-| `extractor.ts` | `extractParagraphs(container)` — TreeWalker over text block tags, attaches `data-contexta-id`, returns paragraphs with prev/next context |
-| `injector.ts` | `injectTranslation`, `clearAllTranslations`, `switchDisplayMode` — all DOM manipulation |
-| `messages.ts` | `sendToBackground`, `sendToTab`, `onMessage` — Chrome message wrappers |
-| `obsidian.ts` | `buildObsidianMarkdown` (frontmatter + callouts) + `exportToObsidian` (PUT to local REST API) |
+| Module          | Role                                                                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`      | All shared types + `Message` discriminated union (the message protocol)                                                                  |
+| `constants.ts`  | 4 preset providers (智谱/硅基/Kimi/MiniMax), 4 translation presets, defaults                                                             |
+| `storage.ts`    | Typed `getStorage`/`setStorage` wrappers over `chrome.storage.local`                                                                     |
+| `prompts.ts`    | Pure functions: `buildSystemPrompt`, `buildUserPrompt`, `buildSummaryPrompt`, `buildQuotesPrompt`                                        |
+| `translator.ts` | `translateParagraph()` via Vercel AI SDK `generateText()` with `@ai-sdk/openai-compatible`                                               |
+| `extractor.ts`  | `extractParagraphs(container)` — TreeWalker over text block tags, attaches `data-contexta-id`, returns paragraphs with prev/next context |
+| `injector.ts`   | `injectTranslation`, `clearAllTranslations`, `switchDisplayMode` — all DOM manipulation                                                  |
+| `messages.ts`   | `sendToBackground`, `sendToTab`, `onMessage` — Chrome message wrappers                                                                   |
+| `obsidian.ts`   | `buildObsidianMarkdown` (frontmatter + callouts) + `exportToObsidian` (PUT to local REST API)                                            |
 
 ## Translation Flow
 
@@ -54,18 +55,11 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 ## Translation Prompt System
 
 Prompts are built from two layers:
+
 - **Core rules** (hardcoded in `buildSystemPrompt`): preserve terms, code, URLs; normalize punctuation; two-step translate strategy
 - **Preset rules** (from `constants.ts` or user custom): style-specific guidance appended to system prompt
 
 4 built-in presets: `tech-blog` (default), `academic`, `popular-science`, `faithful`. Users can add custom presets in Options.
-
-## Extension ID Stability
-
-`wxt.config.ts` has a fixed `manifest.key` to keep the extension ID stable across rebuilds. Without this, `chrome.storage.local` data (API keys, config) is lost when the output directory changes. See exp-book for details.
-
-## Testing
-
-Vitest with `happy-dom` environment. Tests cover pure logic modules: `prompts`, `providers`, `extractor`, `injector`, `obsidian`. No tests for Chrome API-dependent code (background, content script, storage) — those are tested manually.
 
 ## Styling
 
