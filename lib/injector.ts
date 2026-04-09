@@ -21,10 +21,10 @@ function ensureStyles() {
       margin-left: 6px;
       vertical-align: middle;
     }
-    [data-contexta="translation"] {
-      border-left: 3px solid #059669;
-      padding-left: 8px;
-      margin-left: 0;
+    [data-contexta="translation"][data-contexta-bilingual] {
+      border-top: 1px dashed #a7f3d0;
+      padding-top: 4px;
+      margin-top: 2px;
     }
   `
   document.head.appendChild(style)
@@ -47,7 +47,7 @@ export function injectTranslation(
 
   original.insertAdjacentElement('afterend', translated)
 
-  applyModeToElement(original as HTMLElement, translated as HTMLElement, mode)
+  applyModeToElement(original as HTMLElement, translated, mode)
 }
 
 export function injectError(paragraphId: string, error: string): void {
@@ -116,15 +116,24 @@ function applyModeToElement(
   switch (mode) {
     case 'source-only':
       original.style.display = ''
-      if (translated) translated.style.display = 'none'
+      if (translated) {
+        translated.style.display = 'none'
+        translated.removeAttribute('data-contexta-bilingual')
+      }
       break
     case 'bilingual':
       original.style.display = ''
-      if (translated) translated.style.display = ''
+      if (translated) {
+        translated.style.display = ''
+        translated.setAttribute('data-contexta-bilingual', '')
+      }
       break
     case 'target-only':
       original.style.display = 'none'
-      if (translated) translated.style.display = ''
+      if (translated) {
+        translated.style.display = ''
+        translated.removeAttribute('data-contexta-bilingual')
+      }
       break
   }
 }
