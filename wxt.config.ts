@@ -5,7 +5,7 @@ import path from 'path';
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: {
-    name: 'Contexta',
+    name: 'Contexta - AI Translation',
     description: 'AI-powered web article translation',
     permissions: ['storage', 'activeTab'],
   },
