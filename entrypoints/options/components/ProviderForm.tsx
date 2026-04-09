@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Provider, ActiveModel, ModelInfo } from '@/lib/types'
+import type { Provider, ActiveModel } from '@/lib/types'
 
 interface Props {
   provider: Provider
@@ -13,9 +13,6 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
   const [models, setModels] = useState<ModelInfo[]>([])
   const [fetchError, setFetchError] = useState('')
   const [fetching, setFetching] = useState(false)
-  const [selectedModel, setSelectedModel] = useState(
-    activeModel?.providerId === provider.id ? activeModel.modelId : ''
-  )
   const [manualModel, setManualModel] = useState(
     activeModel?.providerId === provider.id ? activeModel.modelId : ''
   )
@@ -46,9 +43,8 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
   }
 
   function handleSetActive() {
-    const modelId = models.length > 0 ? selectedModel : manualModel
-    if (!modelId.trim()) return
-    onSetActive(provider.id, modelId.trim())
+    if (!manualModel.trim()) return
+    onSetActive(provider.id, manualModel.trim())
   }
 
   return (
@@ -108,27 +104,30 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
           </button>
         </div>
 
-        {models.length > 0 ? (
-          <select
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-primary bg-white"
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-          >
-            <option value="">请选择模型</option>
+        <input
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-primary"
+          type="text"
+          value={manualModel}
+          onChange={(e) => setManualModel(e.target.value)}
+          placeholder="输入模型名称，如 glm-4.7-flash"
+        />
+
+        {models.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
             {models.map((m) => (
-              <option key={m.id} value={m.id}>
+              <button
+                key={m.id}
+                className={`px-2 py-1 rounded-md text-xs border-none cursor-pointer transition-colors ${
+                  manualModel === m.id
+                    ? 'bg-primary text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                onClick={() => setManualModel(m.id)}
+              >
                 {m.name || m.id}
-              </option>
+              </button>
             ))}
-          </select>
-        ) : (
-          <input
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-primary"
-            type="text"
-            value={manualModel}
-            onChange={(e) => setManualModel(e.target.value)}
-            placeholder="如：glm-4-flash"
-          />
+          </div>
         )}
 
         {fetchError && <p className="text-xs text-red-500 mt-1">{fetchError}</p>}
@@ -137,7 +136,7 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
       <button
         className="px-4 py-2 bg-primary text-white rounded-lg text-sm border-none cursor-pointer hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
         onClick={handleSetActive}
-        disabled={models.length > 0 ? !selectedModel : !manualModel.trim()}
+        disabled={!manualModel.trim()}
       >
         设为当前使用
       </button>
