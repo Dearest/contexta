@@ -3,6 +3,7 @@ import path from 'path';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
+  outDir: 'dist',
   modules: ['@wxt-dev/module-react'],
   manifest: {
     name: 'Contexta - AI Translation',
