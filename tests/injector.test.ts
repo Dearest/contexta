@@ -124,4 +124,13 @@ describe('switchDisplayMode', () => {
     expect(original.style.display).toBe('none')
     expect(translated.style.display).not.toBe('none')
   })
+
+  it('source-only mode hides translations', () => {
+    switchDisplayMode('source-only')
+
+    const original = container.querySelector('[data-contexta-id="ctx-0"]') as HTMLElement
+    const translated = container.querySelector('[data-contexta="translation"]') as HTMLElement
+    expect(original.style.display).not.toBe('none')
+    expect(translated.style.display).toBe('none')
+  })
 })

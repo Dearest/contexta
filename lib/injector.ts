@@ -1,10 +1,42 @@
 import type { DisplayMode } from './types'
 
+// Inline spinner CSS (injected once)
+let styleInjected = false
+function ensureStyles() {
+  if (styleInjected) return
+  const style = document.createElement('style')
+  style.setAttribute('data-contexta', 'styles')
+  style.textContent = `
+    @keyframes contexta-spin {
+      to { transform: rotate(360deg); }
+    }
+    [data-contexta="spinner"] {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #a7f3d0;
+      border-top-color: #059669;
+      border-radius: 50%;
+      animation: contexta-spin 0.6s linear infinite;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    [data-contexta="translation"] {
+      border-left: 3px solid #059669;
+      padding-left: 8px;
+      margin-left: 0;
+    }
+  `
+  document.head.appendChild(style)
+  styleInjected = true
+}
+
 export function injectTranslation(
   paragraphId: string,
   translation: string,
   mode: DisplayMode,
 ): void {
+  ensureStyles()
   const original = document.querySelector(`[data-contexta-id="${paragraphId}"]`)
   if (!original) return
 
@@ -15,9 +47,7 @@ export function injectTranslation(
 
   original.insertAdjacentElement('afterend', translated)
 
-  if (mode === 'target-only') {
-    ;(original as HTMLElement).style.display = 'none'
-  }
+  applyModeToElement(original as HTMLElement, translated as HTMLElement, mode)
 }
 
 export function injectError(paragraphId: string, error: string): void {
@@ -37,21 +67,23 @@ export function injectError(paragraphId: string, error: string): void {
 }
 
 export function injectLoading(paragraphId: string): void {
+  ensureStyles()
   const original = document.querySelector(`[data-contexta-id="${paragraphId}"]`)
   if (!original) return
 
-  const loading = document.createElement('div')
-  loading.setAttribute('data-contexta', 'loading')
-  loading.setAttribute('data-contexta-for', paragraphId)
-  loading.style.cssText = 'color:#94a3b8;font-size:13px;padding:4px 0;'
-  loading.textContent = '翻译中...'
+  // Don't add duplicate spinners
+  if (original.querySelector('[data-contexta="spinner"]')) return
 
-  original.insertAdjacentElement('afterend', loading)
+  const spinner = document.createElement('span')
+  spinner.setAttribute('data-contexta', 'spinner')
+  spinner.setAttribute('data-contexta-for', paragraphId)
+  original.appendChild(spinner)
 }
 
 export function removeLoading(paragraphId: string): void {
-  const loading = document.querySelector(`[data-contexta="loading"][data-contexta-for="${paragraphId}"]`)
-  loading?.remove()
+  // Remove inline spinner from paragraph
+  const spinner = document.querySelector(`[data-contexta="spinner"][data-contexta-for="${paragraphId}"]`)
+  spinner?.remove()
 }
 
 export function removeError(paragraphId: string): void {
@@ -65,16 +97,34 @@ export function clearAllTranslations(): void {
     ;(el as HTMLElement).style.display = ''
     el.removeAttribute('data-contexta-id')
   })
+  styleInjected = false
 }
 
 export function switchDisplayMode(mode: DisplayMode): void {
-  const originals = document.querySelectorAll('[data-contexta-id]')
-  originals.forEach((el) => {
-    ;(el as HTMLElement).style.display = mode === 'target-only' ? 'none' : ''
+  document.querySelectorAll('[data-contexta-id]').forEach((el) => {
+    const id = el.getAttribute('data-contexta-id')!
+    const translated = document.querySelector(`[data-contexta="translation"][data-contexta-for="${id}"]`) as HTMLElement | null
+    applyModeToElement(el as HTMLElement, translated, mode)
   })
+}
 
-  const translations = document.querySelectorAll('[data-contexta="translation"]')
-  translations.forEach((el) => {
-    ;(el as HTMLElement).style.display = ''
-  })
+function applyModeToElement(
+  original: HTMLElement,
+  translated: HTMLElement | null,
+  mode: DisplayMode,
+): void {
+  switch (mode) {
+    case 'source-only':
+      original.style.display = ''
+      if (translated) translated.style.display = 'none'
+      break
+    case 'bilingual':
+      original.style.display = ''
+      if (translated) translated.style.display = ''
+      break
+    case 'target-only':
+      original.style.display = 'none'
+      if (translated) translated.style.display = ''
+      break
+  }
 }

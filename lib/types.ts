@@ -29,7 +29,7 @@ export interface TranslationPreset {
 
 // === Translation ===
 
-export type DisplayMode = 'bilingual' | 'target-only'
+export type DisplayMode = 'source-only' | 'bilingual' | 'target-only'
 
 export interface Paragraph {
   id: string
