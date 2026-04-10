@@ -41,7 +41,18 @@ export function injectTranslation(
   if (!original) return
 
   const translated = document.createElement(original.tagName)
-  translated.textContent = translation
+  // Copy classes from original to preserve styling (font size, weight, color, etc.)
+  if ((original as HTMLElement).className) {
+    translated.className = (original as HTMLElement).className
+  }
+  // Preserve line breaks: escape HTML first, then convert \n to <br>
+  if (translation.includes('\n')) {
+    const safe = document.createElement('span')
+    safe.textContent = translation
+    translated.innerHTML = safe.innerHTML.replace(/\n/g, '<br>')
+  } else {
+    translated.textContent = translation
+  }
   translated.setAttribute('data-contexta', 'translation')
   translated.setAttribute('data-contexta-for', paragraphId)
 

@@ -66,7 +66,8 @@ export default function App() {
     setIsExporting(true)
     try {
       const result = await sendToBackground({ action: 'export-obsidian', options: { format, includeSummary, includeQuotes } }) as { success: boolean; error?: string }
-      if (result?.success) { setShowExport(false); setStatus('导出成功') }
+      setShowExport(false)
+      if (result?.success) setStatus('导出成功')
       else setStatus(`导出失败: ${result?.error ?? '未知错误'}`)
     } catch { setStatus('导出失败') }
     finally { setIsExporting(false) }

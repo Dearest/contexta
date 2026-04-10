@@ -49,6 +49,7 @@ export interface ArticleMetadata {
 export interface ExtractedArticle {
   paragraphs: Paragraph[]
   metadata: ArticleMetadata
+  contentHtml?: string
 }
 
 // === Obsidian Export ===
@@ -82,6 +83,7 @@ export type Message =
   | { action: 'export-obsidian'; options: ExportOptions }
   | { action: 'export-result'; success: boolean; error?: string }
   | { action: 'retry-paragraph'; paragraphId: string }
+  | { action: 'build-export-markdown'; format: ExportFormat }
   | { action: 'fetch-models'; providerId: string }
   | { action: 'fetch-models-result'; models: ModelInfo[]; error?: string }
 

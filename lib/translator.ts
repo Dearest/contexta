@@ -75,3 +75,25 @@ export function resolvePreset(
   const all = [...BUILTIN_PRESETS, ...customPresets]
   return all.find((p) => p.id === presetId) ?? BUILTIN_PRESETS[0]
 }
+
+/**
+ * Check if text is already in the target language by character ratio.
+ * CJK ratio > 0.3 → Chinese; Latin ratio > 0.5 → English.
+ * CJK threshold is lower because Chinese text often mixes English terms.
+ */
+export function isAlreadyTargetLang(text: string, targetLang: string): boolean {
+  const stripped = text.replace(/[\s\d\p{P}\p{S}]/gu, '')
+  if (stripped.length === 0) return false
+
+  if (targetLang === 'zh-CN' || targetLang === 'zh-TW') {
+    const cjk = stripped.replace(/[^\u4e00-\u9fff]/g, '').length
+    return cjk / stripped.length > 0.3
+  }
+
+  if (targetLang === 'en') {
+    const latin = stripped.replace(/[^a-zA-Z]/g, '').length
+    return latin / stripped.length > 0.5
+  }
+
+  return false
+}

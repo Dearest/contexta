@@ -20,6 +20,23 @@ export function shouldSkipNode(el: Element): boolean {
   return false
 }
 
+function getTextPreservingBreaks(el: Element): string {
+  let text = ''
+  for (const child of el.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      text += child.textContent
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const childEl = child as Element
+      if (childEl.tagName === 'BR') {
+        text += '\n'
+      } else {
+        text += getTextPreservingBreaks(childEl)
+      }
+    }
+  }
+  return text
+}
+
 export function extractParagraphs(container: Element): Paragraph[] {
   const nodes: { el: Element; text: string; tagName: string }[] = []
 
@@ -36,7 +53,7 @@ export function extractParagraphs(container: Element): Paragraph[] {
   let node: Node | null
   while ((node = walker.nextNode())) {
     const el = node as Element
-    const text = el.textContent?.trim() ?? ''
+    const text = getTextPreservingBreaks(el).trim()
     if (text.length === 0) continue
     nodes.push({ el, text, tagName: el.tagName })
   }

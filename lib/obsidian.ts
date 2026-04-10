@@ -1,19 +1,12 @@
-import type { ExtractedArticle, ExportFormat, ObsidianConfig } from './types'
+import type { ArticleMetadata, ObsidianConfig } from './types'
 
-interface BuildMarkdownOptions {
-  article: ExtractedArticle
-  translations: Map<string, string>
-  format: ExportFormat
-  summary?: string
-  quotes?: string
-}
-
-export function buildObsidianMarkdown(options: BuildMarkdownOptions): string {
-  const { article, translations, format, summary, quotes } = options
-  const { metadata, paragraphs } = article
+export function buildFrontmatterAndCallouts(
+  metadata: ArticleMetadata,
+  summary?: string,
+  quotes?: string,
+): string {
   const parts: string[] = []
 
-  // Frontmatter
   parts.push('---')
   parts.push(`title: "${metadata.title}"`)
   if (metadata.author) parts.push(`author: "${metadata.author}"`)
@@ -23,7 +16,6 @@ export function buildObsidianMarkdown(options: BuildMarkdownOptions): string {
   parts.push('---')
   parts.push('')
 
-  // Summary callout
   if (summary) {
     parts.push('> [!abstract] 摘要')
     for (const line of summary.split('\n')) {
@@ -32,7 +24,6 @@ export function buildObsidianMarkdown(options: BuildMarkdownOptions): string {
     parts.push('')
   }
 
-  // Quotes callout
   if (quotes) {
     parts.push('> [!quote] 金句')
     for (const line of quotes.split('\n')) {
@@ -41,29 +32,8 @@ export function buildObsidianMarkdown(options: BuildMarkdownOptions): string {
     parts.push('')
   }
 
-  // Separator if callouts exist
   if (summary || quotes) {
     parts.push('---')
-    parts.push('')
-  }
-
-  // Content
-  for (const paragraph of paragraphs) {
-    const translation = translations.get(paragraph.id)
-
-    switch (format) {
-      case 'target-only':
-        if (translation) parts.push(translation)
-        break
-      case 'source-only':
-        parts.push(paragraph.text)
-        break
-      case 'bilingual':
-        parts.push(paragraph.text)
-        parts.push('')
-        if (translation) parts.push(translation)
-        break
-    }
     parts.push('')
   }
 

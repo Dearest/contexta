@@ -9,27 +9,33 @@ import {
   clearAllTranslations,
   switchDisplayMode,
 } from '@/lib/injector'
-import type { Message, DisplayMode } from '@/lib/types'
+import type { Message, DisplayMode, ExportFormat, ArticleMetadata } from '@/lib/types'
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   async main() {
     let currentMode: DisplayMode = 'bilingual'
+    let lastDefuddleHtml: string | null = null
+    let lastMetadata: ArticleMetadata | null = null
 
     // Load saved display mode
     const stored = await chrome.storage.local.get('displayMode')
     if (stored.displayMode) currentMode = stored.displayMode
 
-    onMessage(async (message) => {
+    onMessage((message) => {
       switch (message.action) {
         case 'extract':
-          return handleExtract()
+          handleExtract().catch(console.error)
+          return
         case 'translation-result':
-          return handleTranslationResult(message)
+          handleTranslationResult(message)
+          return
         case 'translation-error':
-          return handleTranslationError(message)
+          handleTranslationError(message)
+          return
         case 'translation-progress':
-          return handleProgress(message)
+          handleProgress(message)
+          return
         case 'translation-complete':
           removeAllLoadingIndicators()
           return
@@ -40,6 +46,9 @@ export default defineContentScript({
           currentMode = message.mode
           switchDisplayMode(currentMode)
           return
+        case 'build-export-markdown':
+          // Returns Promise — onMessage wrapper will use sendResponse
+          return buildExportMarkdown(message.format)
       }
     })
 
@@ -58,6 +67,15 @@ export default defineContentScript({
       const { default: Defuddle } = await import('defuddle')
       const result = new Defuddle(document).parse()
 
+      // Store for export
+      lastDefuddleHtml = result.content
+
+      console.log('[Contexta] Defuddle result:', {
+        title: result.title,
+        contentLength: result.content?.length,
+        contentPreview: result.content?.substring(0, 200),
+      })
+
       // Find the content area in the real DOM
       const contentContainer = findContentContainer(result.content)
       if (!contentContainer) {
@@ -69,18 +87,35 @@ export default defineContentScript({
         return
       }
 
+      console.log('[Contexta] Content container:', {
+        tagName: contentContainer.tagName,
+        className: (contentContainer as HTMLElement).className,
+        id: contentContainer.id,
+        childElementCount: contentContainer.childElementCount,
+        textLength: contentContainer.textContent?.length,
+      })
+
       const paragraphs = extractParagraphs(contentContainer)
+
+      lastMetadata = {
+        title: result.title || document.title,
+        author: result.author || undefined,
+        published: result.published || undefined,
+        url: location.href,
+      }
+
+      console.log('[Contexta] Extracted paragraphs:', paragraphs.length, paragraphs.map(p => ({
+        id: p.id,
+        tag: p.tagName,
+        text: p.text.substring(0, 60),
+      })))
 
       chrome.runtime.sendMessage({
         action: 'extract-result',
         article: {
           paragraphs,
-          metadata: {
-            title: result.title || document.title,
-            author: result.author || undefined,
-            published: result.published || undefined,
-            url: location.href,
-          },
+          contentHtml: result.content,
+          metadata: lastMetadata,
         },
       })
     }
@@ -115,7 +150,30 @@ export default defineContentScript({
     }
 
     function findContentContainer(defuddleHtml: string): Element | null {
-      // Parse Defuddle output to get text snippets for matching
+      // Prefer semantic <article> element — most blogs have exactly one
+      const articles = document.querySelectorAll('article')
+      console.log('[Contexta] Found <article> elements:', articles.length, Array.from(articles).map(a => ({
+        className: (a as HTMLElement).className?.substring(0, 80),
+        id: a.id,
+        textLength: a.textContent?.length,
+      })))
+      if (articles.length === 1) return articles[0]
+
+      // Multiple <article> elements: pick the one containing Defuddle's content
+      if (articles.length > 1) {
+        const temp = document.createElement('div')
+        temp.innerHTML = defuddleHtml
+        const snippet = Array.from(temp.querySelectorAll('p'))
+          .map((el) => el.textContent?.trim())
+          .find((t) => t && t.length > 30)
+        if (snippet) {
+          for (const article of articles) {
+            if (article.textContent?.includes(snippet)) return article
+          }
+        }
+      }
+
+      // Fallback: heuristic matching via Defuddle snippets
       const temp = document.createElement('div')
       temp.innerHTML = defuddleHtml
       const snippets = Array.from(temp.querySelectorAll('p, h1, h2, h3, h4, h5, h6'))
@@ -125,7 +183,6 @@ export default defineContentScript({
 
       if (snippets.length === 0) return document.body
 
-      // Find elements containing these snippets in the real DOM
       const candidates: Element[] = []
       for (const snippet of snippets) {
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
@@ -144,7 +201,6 @@ export default defineContentScript({
 
       if (candidates.length === 0) return document.body
 
-      // Find common ancestor
       let ancestor = candidates[0]
       for (const candidate of candidates.slice(1)) {
         while (ancestor && !ancestor.contains(candidate)) {
@@ -153,6 +209,66 @@ export default defineContentScript({
       }
 
       return ancestor ?? document.body
+    }
+
+    async function buildExportMarkdown(
+      format: ExportFormat,
+    ): Promise<{ markdown: string; translatedText: string; metadata: ArticleMetadata | null }> {
+      if (!lastDefuddleHtml || !lastMetadata) {
+        return { markdown: '', translatedText: '', metadata: null }
+      }
+
+      const TurndownService = (await import('turndown')).default
+      const turndown = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+        bulletListMarker: '-',
+      })
+
+      // Read translations directly from the DOM
+      const normalize = (s: string) => s.replace(/\s+/g, ' ').trim()
+      const textMap = new Map<string, string>()
+      const translatedParts: string[] = []
+
+      document.querySelectorAll('[data-contexta="translation"]').forEach(el => {
+        const forId = el.getAttribute('data-contexta-for')
+        if (!forId) return
+        const translation = el.textContent || ''
+        translatedParts.push(translation)
+        // Map original element's text → translation for Defuddle HTML matching
+        const origEl = document.querySelector(`[data-contexta-id="${forId}"]`)
+        if (origEl) {
+          textMap.set(normalize(origEl.textContent || ''), translation)
+        }
+      })
+
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(lastDefuddleHtml, 'text/html')
+
+      if (format !== 'source-only') {
+        const TEXT_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption, dt, dd'
+        const elements = doc.body.querySelectorAll(TEXT_SELECTOR)
+
+        for (const el of elements) {
+          const key = normalize(el.textContent || '')
+          const translation = textMap.get(key)
+          if (!translation) continue
+
+          if (format === 'target-only') {
+            el.textContent = translation
+          } else {
+            const tEl = doc.createElement(el.tagName)
+            tEl.textContent = translation
+            el.parentNode?.insertBefore(tEl, el.nextSibling)
+          }
+        }
+      }
+
+      return {
+        markdown: turndown.turndown(doc.body),
+        translatedText: translatedParts.join('\n\n'),
+        metadata: lastMetadata,
+      }
     }
   },
 })

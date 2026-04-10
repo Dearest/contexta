@@ -1,13 +1,22 @@
 import { onMessage, sendToTab } from '@/lib/messages'
 import { getStorage } from '@/lib/storage'
-import { translateParagraph, generateSummary, generateQuotes, resolvePreset } from '@/lib/translator'
+import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang } from '@/lib/translator'
 import { resolveActiveProvider, fetchModels } from '@/lib/providers'
 import type { Message, ExtractedArticle } from '@/lib/types'
-import { buildObsidianMarkdown, exportToObsidian } from '@/lib/obsidian'
+import { buildFrontmatterAndCallouts, exportToObsidian } from '@/lib/obsidian'
 
-// Store translation results for export
+// lastArticle kept for retry (paragraph prev/next context for LLM prompt)
 let lastArticle: ExtractedArticle | null = null
-let lastTranslations: Map<string, string> = new Map()
+
+async function saveArticle() {
+  await chrome.storage.session.set({ _lastArticle: lastArticle })
+}
+
+async function loadArticle() {
+  if (lastArticle) return
+  const data = await chrome.storage.session.get('_lastArticle')
+  if (data._lastArticle) lastArticle = data._lastArticle
+}
 
 export default defineBackground(() => {
   onMessage(async (message, sender) => {
@@ -63,7 +72,7 @@ async function handleExtractResult(
   const { article } = message
 
   lastArticle = article
-  lastTranslations = new Map()
+  await saveArticle()
 
   const [providers, customPresets] = await Promise.all([
     getStorage('providers'),
@@ -88,6 +97,11 @@ async function handleExtractResult(
   for (let i = 0; i < paragraphs.length; i++) {
     const paragraph = paragraphs[i]
 
+    // Skip paragraphs already in the target language
+    if (isAlreadyTargetLang(paragraph.text, targetLang)) {
+      continue
+    }
+
     await sendToTab(tabId, {
       action: 'translation-progress',
       current: i + 1,
@@ -103,8 +117,6 @@ async function handleExtractResult(
         targetLang,
         preset,
       })
-
-      lastTranslations.set(paragraph.id, translation)
 
       await sendToTab(tabId, {
         action: 'translation-result',
@@ -128,6 +140,7 @@ async function handleRetry(
   sender: chrome.runtime.MessageSender,
 ) {
   const tabId = sender.tab?.id
+  await loadArticle()
   if (!tabId || !lastArticle) return
 
   const paragraph = lastArticle.paragraphs.find((p) => p.id === message.paragraphId)
@@ -155,8 +168,6 @@ async function handleRetry(
       targetLang,
       preset,
     })
-
-    lastTranslations.set(paragraph.id, translation)
 
     await sendToTab(tabId, {
       action: 'translation-result',
@@ -190,11 +201,23 @@ async function handleFetchModels(
 async function handleExport(
   message: Extract<Message, { action: 'export-obsidian' }>,
 ) {
-  if (!lastArticle || lastTranslations.size === 0) {
-    return { action: 'export-result', success: false, error: '没有可导出的翻译内容' }
+  const pending = (await chrome.storage.local.get('_pendingTranslation'))._pendingTranslation
+  const tabId = pending?.tabId
+  if (!tabId) {
+    return { action: 'export-result', success: false, error: '找不到翻译页面' }
   }
 
   try {
+    // Content script reads translations from DOM and builds markdown
+    const { markdown: contentMarkdown, translatedText, metadata } = await sendToTab(tabId, {
+      action: 'build-export-markdown',
+      format: message.options.format,
+    }) as { markdown: string; translatedText: string; metadata: { title: string; author?: string; published?: string; url: string } }
+
+    if (!contentMarkdown) {
+      return { action: 'export-result', success: false, error: '没有可导出的翻译内容' }
+    }
+
     const [obsidianConfig, providers, activeModel] = await Promise.all([
       getStorage('obsidianConfig'),
       getStorage('providers'),
@@ -207,29 +230,19 @@ async function handleExport(
     let summary: string | undefined
     let quotes: string | undefined
 
-    if (resolved && (options.includeSummary || options.includeQuotes)) {
-      const translatedContent = lastArticle.paragraphs
-        .map((p) => lastTranslations.get(p.id) ?? '')
-        .filter(Boolean)
-        .join('\n\n')
-
+    if (resolved && translatedText && (options.includeSummary || options.includeQuotes)) {
       if (options.includeSummary) {
-        summary = await generateSummary(resolved.provider, resolved.modelId, translatedContent)
+        summary = await generateSummary(resolved.provider, resolved.modelId, translatedText)
       }
       if (options.includeQuotes) {
-        quotes = await generateQuotes(resolved.provider, resolved.modelId, translatedContent)
+        quotes = await generateQuotes(resolved.provider, resolved.modelId, translatedText)
       }
     }
 
-    const markdown = buildObsidianMarkdown({
-      article: lastArticle,
-      translations: lastTranslations,
-      format: options.format,
-      summary,
-      quotes,
-    })
+    const header = buildFrontmatterAndCallouts(metadata, summary, quotes)
+    const fullMarkdown = header + contentMarkdown
 
-    await exportToObsidian(obsidianConfig, lastArticle.metadata.title, markdown)
+    await exportToObsidian(obsidianConfig, metadata.title, fullMarkdown)
     return { action: 'export-result', success: true }
   } catch (err) {
     return { action: 'export-result', success: false, error: String(err) }

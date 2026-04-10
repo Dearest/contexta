@@ -62,8 +62,6 @@ export const BUILTIN_PRESETS: TranslationPreset[] = [
 export const TARGET_LANGUAGES = [
   { code: 'zh-CN', name: '简体中文' },
   { code: 'zh-TW', name: '繁體中文' },
-  { code: 'ja', name: '日本語' },
-  { code: 'ko', name: '한국어' },
   { code: 'en', name: 'English' },
 ] as const
 
