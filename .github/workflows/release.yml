@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Restore signing key
+        run: echo "${{ secrets.CRX_PRIVATE_KEY }}" > contexta.pem
+
+      - name: Pack CRX
+        run: node scripts/pack.mjs
+
+      - name: Create ZIP for sideloading
+        run: cd dist/chrome-mv3 && zip -r ../../contexta.zip .
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            contexta.crx \
+            contexta.zip \
+            --title "Contexta ${{ github.ref_name }}" \
+            --generate-notes
