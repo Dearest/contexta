@@ -98,7 +98,7 @@ async function handleExtractResult(
     const paragraph = paragraphs[i]
 
     // Skip paragraphs already in the target language
-    if (isAlreadyTargetLang(paragraph.text, targetLang)) {
+    if (isAlreadyTargetLang(paragraph.plainText, targetLang)) {
       continue
     }
 
@@ -122,6 +122,7 @@ async function handleExtractResult(
         action: 'translation-result',
         paragraphId: paragraph.id,
         translation,
+        tagMap: paragraph.tagMap,
       })
     } catch (err) {
       await sendToTab(tabId, {
@@ -173,6 +174,7 @@ async function handleRetry(
       action: 'translation-result',
       paragraphId: paragraph.id,
       translation,
+      tagMap: paragraph.tagMap,
     })
   } catch (err) {
     await sendToTab(tabId, {
