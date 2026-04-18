@@ -54,7 +54,7 @@ export function restoreInlineTags(text: string, tagMap: InlineTagMapping[]): str
   return html
 }
 
-const ALLOWED_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK', 'BR'])
+const ALLOWED_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK', 'BR', 'CODE', 'SPAN'])
 const DANGEROUS_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT'])
 
 export function sanitizeHtml(html: string): string {

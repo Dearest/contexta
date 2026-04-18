@@ -16,7 +16,7 @@ const INLINE_TAGS = new Set([
   'SUB', 'SUP', 'MARK', 'ABBR', 'TIME', 'SMALL', 'S', 'DEL', 'INS',
 ])
 
-const PRESERVE_INLINE_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK'])
+const PRESERVE_INLINE_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK', 'CODE'])
 
 export function shouldSkipNode(el: Element): boolean {
   if (el.hasAttribute('data-contexta')) return true
@@ -42,7 +42,7 @@ export function extractInlineHtml(el: Element): { text: string; plainText: strin
 
         if (tag === 'BR') {
           result += '\n'
-        } else if (PRESERVE_INLINE_TAGS.has(tag)) {
+        } else if (PRESERVE_INLINE_TAGS.has(tag) || (tag === 'SPAN' && (childEl.hasAttribute('style') || childEl.hasAttribute('class')))) {
           const tagLower = tag.toLowerCase()
           counters[tagLower] = (counters[tagLower] || 0) + 1
           const placeholder = `${tagLower}${counters[tagLower]}`

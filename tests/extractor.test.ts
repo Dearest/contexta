@@ -80,12 +80,37 @@ describe('extractInlineHtml', () => {
     expect(result.tagMap[1].placeholder).toBe('a2')
   })
 
-  it('passes through non-preserved inline tags (span)', () => {
+  it('preserves span with style attribute', () => {
     const el = document.createElement('p')
     el.innerHTML = '<span style="color:red">colored</span> text'
     const result = extractInlineHtml(el)
-    expect(result.text).toBe('colored text')
+    expect(result.text).toBe('<span1>colored</span1> text')
+    expect(result.tagMap).toHaveLength(1)
+    expect(result.tagMap[0]).toEqual({ placeholder: 'span1', tag: 'span', attrs: { style: 'color:red' } })
+  })
+
+  it('preserves span with class attribute', () => {
+    const el = document.createElement('p')
+    el.innerHTML = '<span class="mainlink">title</span> desc'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('<span1>title</span1> desc')
+    expect(result.tagMap[0].attrs).toEqual({ class: 'mainlink' })
+  })
+
+  it('passes through bare span without style or class', () => {
+    const el = document.createElement('p')
+    el.innerHTML = '<span>plain</span> text'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('plain text')
     expect(result.tagMap).toEqual([])
+  })
+
+  it('preserves inline code tags', () => {
+    const el = document.createElement('p')
+    el.innerHTML = 'Use <code>npm install</code> to install'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('Use <code1>npm install</code1> to install')
+    expect(result.tagMap[0]).toEqual({ placeholder: 'code1', tag: 'code', attrs: {} })
   })
 
   it('preserves strong and b tags', () => {
