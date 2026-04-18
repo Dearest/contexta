@@ -123,7 +123,7 @@ export default defineContentScript({
     function handleTranslationResult(message: Extract<Message, { action: 'translation-result' }>) {
       removeLoading(message.paragraphId)
       removeError(message.paragraphId)
-      injectTranslation(message.paragraphId, message.translation, currentMode)
+      injectTranslation(message.paragraphId, message.translation, currentMode, message.tagMap)
     }
 
     function handleTranslationError(message: Extract<Message, { action: 'translation-error' }>) {
@@ -233,12 +233,11 @@ export default defineContentScript({
       document.querySelectorAll('[data-contexta="translation"]').forEach(el => {
         const forId = el.getAttribute('data-contexta-for')
         if (!forId) return
-        const translation = el.textContent || ''
-        translatedParts.push(translation)
-        // Map original element's text → translation for Defuddle HTML matching
+        const translationHtml = (el as HTMLElement).innerHTML
+        translatedParts.push(el.textContent || '')
         const origEl = document.querySelector(`[data-contexta-id="${forId}"]`)
         if (origEl) {
-          textMap.set(normalize(origEl.textContent || ''), translation)
+          textMap.set(normalize(origEl.textContent || ''), translationHtml)
         }
       })
 
@@ -255,10 +254,10 @@ export default defineContentScript({
           if (!translation) continue
 
           if (format === 'target-only') {
-            el.textContent = translation
+            el.innerHTML = translation
           } else {
             const tEl = doc.createElement(el.tagName)
-            tEl.textContent = translation
+            tEl.innerHTML = translation
             el.parentNode?.insertBefore(tEl, el.nextSibling)
           }
         }
