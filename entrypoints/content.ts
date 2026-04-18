@@ -159,17 +159,39 @@ export default defineContentScript({
       })))
       if (articles.length === 1) return articles[0]
 
-      // Multiple <article> elements: pick the one containing Defuddle's content
+      // Multiple <article> elements: find the one containing Defuddle's content,
+      // then expand to include sibling articles (thread/timeline pattern)
       if (articles.length > 1) {
         const temp = document.createElement('div')
         temp.innerHTML = defuddleHtml
         const snippet = Array.from(temp.querySelectorAll('p'))
           .map((el) => el.textContent?.trim())
           .find((t) => t && t.length > 30)
+        let matchedArticle: Element | null = null
         if (snippet) {
           for (const article of articles) {
-            if (article.textContent?.includes(snippet)) return article
+            if (article.textContent?.includes(snippet)) {
+              matchedArticle = article
+              break
+            }
           }
+        }
+        if (matchedArticle) {
+          // Walk up to find ancestor containing multiple articles (e.g., Twitter thread)
+          // Stop at section boundaries to avoid going too broad (e.g., blog sidebar)
+          const SECTION_BOUNDARY = new Set(['MAIN', 'ASIDE', 'HEADER', 'FOOTER', 'NAV', 'BODY'])
+          let parent = matchedArticle.parentElement
+          for (let i = 0; i < 8 && parent && !SECTION_BOUNDARY.has(parent.tagName); i++) {
+            if (parent.querySelectorAll('article').length > 1) {
+              console.log('[Contexta] Expanded container to include sibling articles:', {
+                tagName: parent.tagName,
+                articleCount: parent.querySelectorAll('article').length,
+              })
+              return parent
+            }
+            parent = parent.parentElement
+          }
+          return matchedArticle
         }
       }
 
