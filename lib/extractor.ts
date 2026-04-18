@@ -40,7 +40,9 @@ export function extractInlineHtml(el: Element): { text: string; plainText: strin
         const childEl = child as Element
         const tag = childEl.tagName
 
-        if (tag === 'BR') {
+        if (SKIP_TAGS.has(tag) && !PRESERVE_INLINE_TAGS.has(tag)) {
+          continue
+        } else if (tag === 'BR') {
           result += '\n'
         } else if (PRESERVE_INLINE_TAGS.has(tag) || (tag === 'SPAN' && (childEl.hasAttribute('style') || childEl.hasAttribute('class')))) {
           const tagLower = tag.toLowerCase()
