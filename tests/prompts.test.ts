@@ -19,6 +19,13 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('仅输出译文')
     expect(result).toContain('先直译')
   })
+
+  it('includes strict placeholder preservation rule', () => {
+    const result = buildSystemPrompt('简体中文', '')
+    expect(result).toContain('【严格】')
+    expect(result).toContain('结构占位符')
+    expect(result).toContain('原样保留')
+  })
 })
 
 describe('buildUserPrompt', () => {
