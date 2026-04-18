@@ -1,4 +1,4 @@
-import type { Paragraph, ArticleMetadata, ExtractedArticle } from './types'
+import type { Paragraph, ArticleMetadata, ExtractedArticle, InlineTagMapping } from './types'
 
 const TEXT_BLOCK_TAGS = new Set([
   'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
@@ -16,6 +16,8 @@ const INLINE_TAGS = new Set([
   'SUB', 'SUP', 'MARK', 'ABBR', 'TIME', 'SMALL', 'S', 'DEL', 'INS',
 ])
 
+const PRESERVE_INLINE_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK'])
+
 export function shouldSkipNode(el: Element): boolean {
   if (el.hasAttribute('data-contexta')) return true
   if (SKIP_TAGS.has(el.tagName)) return true
@@ -25,21 +27,48 @@ export function shouldSkipNode(el: Element): boolean {
   return false
 }
 
-function getTextPreservingBreaks(el: Element): string {
-  let text = ''
-  for (const child of el.childNodes) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      text += child.textContent
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const childEl = child as Element
-      if (childEl.tagName === 'BR') {
-        text += '\n'
-      } else {
-        text += getTextPreservingBreaks(childEl)
+export function extractInlineHtml(el: Element): { text: string; plainText: string; tagMap: InlineTagMapping[] } {
+  const tagMap: InlineTagMapping[] = []
+  const counters: Record<string, number> = {}
+
+  function walk(node: Node): string {
+    let result = ''
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        result += child.textContent
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const childEl = child as Element
+        const tag = childEl.tagName
+
+        if (tag === 'BR') {
+          result += '\n'
+        } else if (PRESERVE_INLINE_TAGS.has(tag)) {
+          const tagLower = tag.toLowerCase()
+          counters[tagLower] = (counters[tagLower] || 0) + 1
+          const placeholder = `${tagLower}${counters[tagLower]}`
+
+          // Collect attributes
+          const attrs: Record<string, string> = {}
+          for (const attr of childEl.attributes) {
+            attrs[attr.name] = attr.value
+          }
+
+          tagMap.push({ placeholder, tag: tagLower, attrs })
+          const innerText = walk(childEl)
+          result += `<${placeholder}>${innerText}</${placeholder}>`
+        } else {
+          // Non-preserved inline tags (SPAN, etc.): pass through child content
+          result += walk(childEl)
+        }
       }
     }
+    return result
   }
-  return text
+
+  const text = walk(el).trim()
+  const plainText = el.textContent?.trim() ?? ''
+
+  return { text, plainText, tagMap }
 }
 
 function isLeafTextBlock(el: Element): boolean {
@@ -51,7 +80,7 @@ function isLeafTextBlock(el: Element): boolean {
 }
 
 export function extractParagraphs(container: Element): Paragraph[] {
-  const nodes: { el: Element; text: string; tagName: string }[] = []
+  const nodes: { el: Element; text: string; plainText: string; tagName: string; tagMap: InlineTagMapping[] }[] = []
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
     acceptNode(node) {
@@ -66,9 +95,9 @@ export function extractParagraphs(container: Element): Paragraph[] {
   let node: Node | null
   while ((node = walker.nextNode())) {
     const el = node as Element
-    const text = getTextPreservingBreaks(el).trim()
+    const { text, plainText, tagMap } = extractInlineHtml(el)
     if (text.length === 0) continue
-    nodes.push({ el, text, tagName: el.tagName })
+    nodes.push({ el, text, plainText, tagName: el.tagName, tagMap })
   }
 
   // Fallback: sites like Twitter/X use div+span instead of semantic tags
@@ -89,9 +118,9 @@ export function extractParagraphs(container: Element): Paragraph[] {
 
     while ((node = fallbackWalker.nextNode())) {
       const el = node as Element
-      const text = getTextPreservingBreaks(el).trim()
+      const { text, plainText, tagMap } = extractInlineHtml(el)
       if (text.length === 0) continue
-      nodes.push({ el, text, tagName: el.tagName })
+      nodes.push({ el, text, plainText, tagName: el.tagName, tagMap })
     }
     console.log(`[Contexta] Fallback extracted ${nodes.length} leaf text blocks`)
   }
@@ -102,9 +131,11 @@ export function extractParagraphs(container: Element): Paragraph[] {
     return {
       id,
       text: n.text,
+      plainText: n.plainText,
       tagName: n.tagName,
-      prev: i > 0 ? nodes[i - 1].text : undefined,
-      next: i < nodes.length - 1 ? nodes[i + 1].text : undefined,
+      tagMap: n.tagMap.length > 0 ? n.tagMap : undefined,
+      prev: i > 0 ? nodes[i - 1].plainText : undefined,
+      next: i < nodes.length - 1 ? nodes[i + 1].plainText : undefined,
     }
   })
 }
