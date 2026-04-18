@@ -176,23 +176,25 @@ export default defineContentScript({
             }
           }
         }
-        if (matchedArticle) {
-          // Walk up to find ancestor containing multiple articles (e.g., Twitter thread)
-          // Stop at section boundaries to avoid going too broad (e.g., blog sidebar)
-          const SECTION_BOUNDARY = new Set(['MAIN', 'ASIDE', 'HEADER', 'FOOTER', 'NAV', 'BODY'])
-          let parent = matchedArticle.parentElement
-          for (let i = 0; i < 8 && parent && !SECTION_BOUNDARY.has(parent.tagName); i++) {
-            if (parent.querySelectorAll('article').length > 1) {
-              console.log('[Contexta] Expanded container to include sibling articles:', {
-                tagName: parent.tagName,
-                articleCount: parent.querySelectorAll('article').length,
-              })
-              return parent
-            }
-            parent = parent.parentElement
+
+        // Use matched article or first article as starting point for expansion
+        const startArticle = matchedArticle ?? articles[0]
+
+        // Walk up to find ancestor containing multiple articles (e.g., Twitter thread)
+        // Stop at section boundaries to avoid going too broad (e.g., blog sidebar)
+        const SECTION_BOUNDARY = new Set(['MAIN', 'ASIDE', 'HEADER', 'FOOTER', 'NAV', 'BODY'])
+        let parent = startArticle.parentElement
+        for (let i = 0; i < 8 && parent && !SECTION_BOUNDARY.has(parent.tagName); i++) {
+          if (parent.querySelectorAll('article').length > 1) {
+            console.log('[Contexta] Expanded container to include sibling articles:', {
+              tagName: parent.tagName,
+              articleCount: parent.querySelectorAll('article').length,
+            })
+            return parent
           }
-          return matchedArticle
+          parent = parent.parentElement
         }
+        return startArticle
       }
 
       // Fallback: heuristic matching via Defuddle snippets
