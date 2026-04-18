@@ -135,6 +135,59 @@ describe('extractInlineHtml', () => {
     expect(result.text).toBe('This is <mark1>highlighted</mark1> text')
     expect(result.tagMap[0]).toEqual({ placeholder: 'mark1', tag: 'mark', attrs: {} })
   })
+
+  it('skips button content entirely', () => {
+    const el = document.createElement('div')
+    el.innerHTML = '<button><svg viewBox="0 0 24 24"></svg><span>469</span></button>'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('')
+    expect(result.tagMap).toEqual([])
+  })
+
+  it('skips SVG elements', () => {
+    const el = document.createElement('div')
+    el.innerHTML = '<svg viewBox="0 0 24 24"><path d="M1 2"></path></svg> text'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('text')
+    expect(result.tagMap).toEqual([])
+  })
+
+  it('skips textarea and select elements', () => {
+    const el = document.createElement('div')
+    el.innerHTML = 'Label: <textarea>draft</textarea> <select><option>A</option></select>'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('Label:')
+    expect(result.tagMap).toEqual([])
+  })
+
+  it('extracts text alongside buttons (action bar pattern)', () => {
+    const el = document.createElement('div')
+    el.innerHTML = 'Posted by <a href="/user">Alice</a> <button>Reply</button> <button>Like</button>'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('Posted by <a1>Alice</a1>')
+    expect(result.tagMap).toHaveLength(1)
+    expect(result.tagMap[0].tag).toBe('a')
+  })
+
+  it('preserves inline code but skips block pre>code', () => {
+    const el = document.createElement('div')
+    el.innerHTML = 'Use <code>npm</code> but skip <pre><code>block</code></pre>'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('Use <code1>npm</code1> but skip')
+    expect(result.tagMap).toHaveLength(1)
+    expect(result.tagMap[0].tag).toBe('code')
+  })
+
+  it('handles complex nested structure with mixed preserved/skipped tags', () => {
+    const el = document.createElement('p')
+    el.innerHTML = '<span class="title"><a href="/post"><em>Title</em></a></span> — description <button>Share</button>'
+    const result = extractInlineHtml(el)
+    expect(result.text).toBe('<span1><a1><em1>Title</em1></a1></span1> — description')
+    expect(result.tagMap).toHaveLength(3)
+    expect(result.tagMap[0].tag).toBe('span')
+    expect(result.tagMap[1].tag).toBe('a')
+    expect(result.tagMap[2].tag).toBe('em')
+  })
 })
 
 describe('extractParagraphs', () => {
@@ -159,6 +212,49 @@ describe('extractParagraphs', () => {
     expect(paragraphs).toHaveLength(2)
     expect(paragraphs[0].plainText).toBe('Before code.')
     expect(paragraphs[1].plainText).toBe('After code.')
+  })
+
+  it('uses fallback extraction for non-semantic DOM (div+span)', () => {
+    const container = document.createElement('div')
+    container.innerHTML = `
+      <div><div><span>Tweet text here with enough content</span></div></div>
+      <div><div><span>Reply text here with enough content</span></div></div>
+    `
+    const paragraphs = extractParagraphs(container)
+    expect(paragraphs.length).toBeGreaterThan(0)
+    expect(paragraphs.some(p => p.plainText.includes('Tweet text'))).toBe(true)
+    expect(paragraphs.some(p => p.plainText.includes('Reply text'))).toBe(true)
+  })
+
+  it('fallback excludes button-only containers', () => {
+    const container = document.createElement('div')
+    container.innerHTML = `
+      <div><span>Actual content to translate</span></div>
+      <div><button><svg viewBox="0 0 24 24"></svg><span>137</span></button></div>
+      <div><button><svg viewBox="0 0 24 24"></svg><span>469</span></button></div>
+    `
+    const paragraphs = extractParagraphs(container)
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0].plainText).toBe('Actual content to translate')
+  })
+
+  it('preserves tagMap through extractParagraphs', () => {
+    const container = document.createElement('div')
+    container.innerHTML = '<p>Click <a href="https://example.com">here</a> for details</p>'
+    const paragraphs = extractParagraphs(container)
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0].text).toBe('Click <a1>here</a1> for details')
+    expect(paragraphs[0].plainText).toBe('Click here for details')
+    expect(paragraphs[0].tagMap).toEqual([
+      { placeholder: 'a1', tag: 'a', attrs: { href: 'https://example.com' } },
+    ])
+  })
+
+  it('sets tagMap to undefined when no inline tags', () => {
+    const container = document.createElement('div')
+    container.innerHTML = '<p>Plain text only</p>'
+    const paragraphs = extractParagraphs(container)
+    expect(paragraphs[0].tagMap).toBeUndefined()
   })
 
   it('assigns unique IDs', () => {
