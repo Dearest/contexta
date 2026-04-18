@@ -18,6 +18,12 @@ export interface ActiveModel {
   modelId: string
 }
 
+export interface InlineTagMapping {
+  placeholder: string
+  tag: string
+  attrs: Record<string, string>
+}
+
 // === Translation Presets ===
 
 export interface TranslationPreset {
@@ -34,9 +40,11 @@ export type DisplayMode = 'source-only' | 'bilingual' | 'target-only'
 export interface Paragraph {
   id: string
   text: string
+  plainText: string
   prev?: string
   next?: string
   tagName: string
+  tagMap?: InlineTagMapping[]
 }
 
 export interface ArticleMetadata {
@@ -74,7 +82,7 @@ export type Message =
   | { action: 'translate'; mode: DisplayMode; targetLang: string; presetId: string }
   | { action: 'extract' }
   | { action: 'extract-result'; article: ExtractedArticle }
-  | { action: 'translation-result'; paragraphId: string; translation: string }
+  | { action: 'translation-result'; paragraphId: string; translation: string; tagMap?: InlineTagMapping[] }
   | { action: 'translation-error'; paragraphId: string; error: string }
   | { action: 'translation-progress'; current: number; total: number }
   | { action: 'translation-complete' }

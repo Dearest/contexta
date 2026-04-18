@@ -13,6 +13,7 @@ export function buildSystemPrompt(targetLang: string, presetRules: string): stri
 - 代码、变量名、命令、URL 不翻译
 - 英文术语与中文之间加半角空格
 - 仅输出译文，不要输出XML标签、解释或附加内容
+- 【严格】文本中形如 <a1>...</a1>、<em1>...</em1> 的编号标签是结构占位符，必须原样保留在译文中。只翻译标签内外的文字，不得删除、修改、合并或新增任何占位符标签。占位符数量和嵌套关系必须与原文完全一致。
 ${presetRules ? '\n' + presetRules : ''}
 <context>标签内是上下文，仅供参考，不要翻译。
 策略：先直译确保完整，再意译使表达自然流畅。仅输出最终意译结果。`

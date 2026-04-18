@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0] - 2026-04-18
+
+### Added
+
+- 翻译保留内联 HTML 结构（链接、加粗、斜体、行内代码等）。采用占位符标签映射方案：提取时生成 `<a1>`/`<em1>` 占位符，LLM 翻译后还原为真实 HTML。
+- 带 style/class 的 `<span>` 条件保留，保持原文的标题样式（字体大小、粗细、颜色等）。
+- `sanitizeHtml` 白名单过滤，防止 innerHTML 注入的 XSS 风险。
+- 多 article 容器扩展：Twitter/X 等 timeline 页面自动扩展到线程容器，翻译所有推文而非仅主推文。
+
+### Fixed
+
+- 翻译后链接不可点击、加粗/斜体丢失的问题。
+- Twitter action bar 的数字（回复数、转帖数等）被错误提取为翻译内容。
+- Defuddle 内容无 `<p>` 标签时（如 Twitter），snippet 匹配失败导致容器选择退化。
+
 ## [0.1.1] - 2026-04-18
 
 ### Fixed

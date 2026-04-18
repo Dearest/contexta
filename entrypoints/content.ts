@@ -123,7 +123,7 @@ export default defineContentScript({
     function handleTranslationResult(message: Extract<Message, { action: 'translation-result' }>) {
       removeLoading(message.paragraphId)
       removeError(message.paragraphId)
-      injectTranslation(message.paragraphId, message.translation, currentMode)
+      injectTranslation(message.paragraphId, message.translation, currentMode, message.tagMap)
     }
 
     function handleTranslationError(message: Extract<Message, { action: 'translation-error' }>) {
@@ -159,18 +159,42 @@ export default defineContentScript({
       })))
       if (articles.length === 1) return articles[0]
 
-      // Multiple <article> elements: pick the one containing Defuddle's content
+      // Multiple <article> elements: find the one containing Defuddle's content,
+      // then expand to include sibling articles (thread/timeline pattern)
       if (articles.length > 1) {
         const temp = document.createElement('div')
         temp.innerHTML = defuddleHtml
         const snippet = Array.from(temp.querySelectorAll('p'))
           .map((el) => el.textContent?.trim())
           .find((t) => t && t.length > 30)
+        let matchedArticle: Element | null = null
         if (snippet) {
           for (const article of articles) {
-            if (article.textContent?.includes(snippet)) return article
+            if (article.textContent?.includes(snippet)) {
+              matchedArticle = article
+              break
+            }
           }
         }
+
+        // Use matched article or first article as starting point for expansion
+        const startArticle = matchedArticle ?? articles[0]
+
+        // Walk up to find ancestor containing multiple articles (e.g., Twitter thread)
+        // Stop at section boundaries to avoid going too broad (e.g., blog sidebar)
+        const SECTION_BOUNDARY = new Set(['MAIN', 'ASIDE', 'HEADER', 'FOOTER', 'NAV', 'BODY'])
+        let parent = startArticle.parentElement
+        for (let i = 0; i < 8 && parent && !SECTION_BOUNDARY.has(parent.tagName); i++) {
+          if (parent.querySelectorAll('article').length > 1) {
+            console.log('[Contexta] Expanded container to include sibling articles:', {
+              tagName: parent.tagName,
+              articleCount: parent.querySelectorAll('article').length,
+            })
+            return parent
+          }
+          parent = parent.parentElement
+        }
+        return startArticle
       }
 
       // Fallback: heuristic matching via Defuddle snippets
@@ -233,12 +257,11 @@ export default defineContentScript({
       document.querySelectorAll('[data-contexta="translation"]').forEach(el => {
         const forId = el.getAttribute('data-contexta-for')
         if (!forId) return
-        const translation = el.textContent || ''
-        translatedParts.push(translation)
-        // Map original element's text → translation for Defuddle HTML matching
+        const translationHtml = (el as HTMLElement).innerHTML
+        translatedParts.push(el.textContent || '')
         const origEl = document.querySelector(`[data-contexta-id="${forId}"]`)
         if (origEl) {
-          textMap.set(normalize(origEl.textContent || ''), translation)
+          textMap.set(normalize(origEl.textContent || ''), translationHtml)
         }
       })
 
@@ -255,10 +278,10 @@ export default defineContentScript({
           if (!translation) continue
 
           if (format === 'target-only') {
-            el.textContent = translation
+            el.innerHTML = translation
           } else {
             const tEl = doc.createElement(el.tagName)
-            tEl.textContent = translation
+            tEl.innerHTML = translation
             el.parentNode?.insertBefore(tEl, el.nextSibling)
           }
         }

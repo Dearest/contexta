@@ -1,4 +1,4 @@
-import type { DisplayMode } from './types'
+import type { DisplayMode, InlineTagMapping } from './types'
 
 // Inline spinner CSS (injected once)
 let styleInjected = false
@@ -31,10 +31,67 @@ function ensureStyles() {
   styleInjected = true
 }
 
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+export function restoreInlineTags(text: string, tagMap: InlineTagMapping[]): string {
+  if (tagMap.length === 0) return text
+
+  let html = text
+  for (const { placeholder, tag, attrs } of tagMap) {
+    const attrStr = Object.entries(attrs)
+      .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)
+      .join('')
+
+    html = html.replace(new RegExp(`<${placeholder}>`, 'g'), `<${tag}${attrStr}>`)
+    html = html.replace(new RegExp(`</${placeholder}>`, 'g'), `</${tag}>`)
+  }
+  return html
+}
+
+const ALLOWED_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK', 'BR', 'CODE', 'SPAN'])
+const DANGEROUS_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT'])
+
+export function sanitizeHtml(html: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+
+  function clean(parent: Node) {
+    for (const child of Array.from(parent.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const el = child as Element
+        if (DANGEROUS_TAGS.has(el.tagName)) {
+          el.remove()
+          continue
+        }
+        if (!ALLOWED_TAGS.has(el.tagName)) {
+          el.replaceWith(...el.childNodes)
+          continue
+        }
+        for (const attr of Array.from(el.attributes)) {
+          if (attr.name.startsWith('on') || attr.value.startsWith('javascript:')) {
+            el.removeAttribute(attr.name)
+          }
+        }
+        clean(el)
+      }
+    }
+  }
+
+  clean(template.content)
+  return template.innerHTML
+}
+
 export function injectTranslation(
   paragraphId: string,
   translation: string,
   mode: DisplayMode,
+  tagMap?: InlineTagMapping[],
 ): void {
   ensureStyles()
   const original = document.querySelector(`[data-contexta-id="${paragraphId}"]`)
@@ -45,8 +102,10 @@ export function injectTranslation(
   if ((original as HTMLElement).className) {
     translated.className = (original as HTMLElement).className
   }
-  // Preserve line breaks: escape HTML first, then convert \n to <br>
-  if (translation.includes('\n')) {
+  if (tagMap && tagMap.length > 0) {
+    const restored = restoreInlineTags(translation, tagMap)
+    translated.innerHTML = sanitizeHtml(restored)
+  } else if (translation.includes('\n')) {
     const safe = document.createElement('span')
     safe.textContent = translation
     translated.innerHTML = safe.innerHTML.replace(/\n/g, '<br>')
