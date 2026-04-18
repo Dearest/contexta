@@ -101,3 +101,17 @@ Content Script's `onMessage` handler is **synchronous** (not `async`). This is c
 Tailwind CSS v4 with emerald green theme: `primary` (#059669), `primary-dark` (#065f46), `primary-light` (#ecfdf5), `primary-border` (#a7f3d0). shadcn/ui components in `components/ui/`. Popup CSS uses `@import "tailwindcss"` (v4 syntax).
 
 Bilingual mode: top dashed green line (`border-top: 1px dashed #a7f3d0`) separates original from translation. Target-only mode: no decoration. Translated elements copy original's `className` for style parity.
+
+## Release Workflow
+
+When user says "发布版本", execute the following steps:
+
+1. **Determine version**: Ask user for the new version number (semver), or infer from context (patch for bugfix, minor for feature)
+2. **Update `package.json`**: Bump the `version` field
+3. **Update `CHANGELOG.md`**: Add a new section at the top with version, date, and categorized changes (Added/Fixed/Changed). Summarize from git log since the last tag
+4. **Build & test**: Run `npm run build` and `npm test` to verify
+5. **Commit**: `git add package.json CHANGELOG.md && git commit -m "chore: bump version to X.Y.Z and update CHANGELOG"`
+6. **Tag**: `git tag vX.Y.Z`
+7. **Push**: `git push && git push origin vX.Y.Z`
+
+The `v*` tag push triggers `.github/workflows/release.yml` which auto-builds CRX/ZIP and creates a GitHub Release.
