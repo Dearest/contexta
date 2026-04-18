@@ -11,6 +11,11 @@ const SKIP_TAGS = new Set([
   'SVG', 'CANVAS', 'VIDEO', 'AUDIO', 'IFRAME',
 ])
 
+const INLINE_TAGS = new Set([
+  'SPAN', 'A', 'STRONG', 'EM', 'B', 'I', 'U', 'BR', 'IMG',
+  'SUB', 'SUP', 'MARK', 'ABBR', 'TIME', 'SMALL', 'S', 'DEL', 'INS',
+])
+
 export function shouldSkipNode(el: Element): boolean {
   if (el.hasAttribute('data-contexta')) return true
   if (SKIP_TAGS.has(el.tagName)) return true
@@ -37,6 +42,14 @@ function getTextPreservingBreaks(el: Element): string {
   return text
 }
 
+function isLeafTextBlock(el: Element): boolean {
+  for (const child of el.children) {
+    if (INLINE_TAGS.has(child.tagName) || SKIP_TAGS.has(child.tagName)) continue
+    if ((child.textContent?.trim() ?? '').length > 0) return false
+  }
+  return true
+}
+
 export function extractParagraphs(container: Element): Paragraph[] {
   const nodes: { el: Element; text: string; tagName: string }[] = []
 
@@ -56,6 +69,31 @@ export function extractParagraphs(container: Element): Paragraph[] {
     const text = getTextPreservingBreaks(el).trim()
     if (text.length === 0) continue
     nodes.push({ el, text, tagName: el.tagName })
+  }
+
+  // Fallback: sites like Twitter/X use div+span instead of semantic tags
+  if (nodes.length === 0) {
+    console.log('[Contexta] Semantic extraction empty, falling back to leaf text blocks')
+    const fallbackWalker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+      acceptNode(node) {
+        const el = node as Element
+        if (SKIP_TAGS.has(el.tagName)) return NodeFilter.FILTER_REJECT
+        if (el.hasAttribute('data-contexta')) return NodeFilter.FILTER_REJECT
+        if (INLINE_TAGS.has(el.tagName)) return NodeFilter.FILTER_SKIP
+        const text = el.textContent?.trim() ?? ''
+        if (text.length === 0) return NodeFilter.FILTER_SKIP
+        if (isLeafTextBlock(el)) return NodeFilter.FILTER_ACCEPT
+        return NodeFilter.FILTER_SKIP
+      },
+    })
+
+    while ((node = fallbackWalker.nextNode())) {
+      const el = node as Element
+      const text = getTextPreservingBreaks(el).trim()
+      if (text.length === 0) continue
+      nodes.push({ el, text, tagName: el.tagName })
+    }
+    console.log(`[Contexta] Fallback extracted ${nodes.length} leaf text blocks`)
   }
 
   return nodes.map((n, i) => {
