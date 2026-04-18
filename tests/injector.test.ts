@@ -240,4 +240,14 @@ describe('sanitizeHtml', () => {
     const html = '<b>bold</b> <i>italic</i> <mark>highlight</mark>'
     expect(sanitizeHtml(html)).toBe(html)
   })
+
+  it('removes script tags and their content', () => {
+    const result = sanitizeHtml('safe <script>alert("xss")</script> text')
+    expect(result).toBe('safe  text')
+  })
+
+  it('removes style tags and their content', () => {
+    const result = sanitizeHtml('safe <style>body{display:none}</style> text')
+    expect(result).toBe('safe  text')
+  })
 })

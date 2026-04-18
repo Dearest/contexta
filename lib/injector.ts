@@ -32,7 +32,11 @@ function ensureStyles() {
 }
 
 function escapeAttr(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 export function restoreInlineTags(text: string, tagMap: InlineTagMapping[]): string {
@@ -51,6 +55,7 @@ export function restoreInlineTags(text: string, tagMap: InlineTagMapping[]): str
 }
 
 const ALLOWED_TAGS = new Set(['A', 'EM', 'STRONG', 'B', 'I', 'MARK', 'BR'])
+const DANGEROUS_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT'])
 
 export function sanitizeHtml(html: string): string {
   const template = document.createElement('template')
@@ -60,6 +65,10 @@ export function sanitizeHtml(html: string): string {
     for (const child of Array.from(parent.childNodes)) {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const el = child as Element
+        if (DANGEROUS_TAGS.has(el.tagName)) {
+          el.remove()
+          continue
+        }
         if (!ALLOWED_TAGS.has(el.tagName)) {
           el.replaceWith(...el.childNodes)
           continue
