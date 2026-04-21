@@ -22,6 +22,7 @@ export default function App() {
   const [status, setStatus] = useState<string | undefined>()
   const [showExport, setShowExport] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [exportedFilePath, setExportedFilePath] = useState<string | undefined>()
 
   useEffect(() => { loadSettings() }, [])
 
@@ -64,14 +65,27 @@ export default function App() {
 
   const handleExport = useCallback(async (format: ExportFormat, includeSummary: boolean, includeQuotes: boolean) => {
     setIsExporting(true)
+    setExportedFilePath(undefined)
     try {
-      const result = await sendToBackground({ action: 'export-obsidian', options: { format, includeSummary, includeQuotes } }) as { success: boolean; error?: string }
+      const result = await sendToBackground({ action: 'export-obsidian', options: { format, includeSummary, includeQuotes } }) as { success: boolean; error?: string; filePath?: string }
       setShowExport(false)
-      if (result?.success) setStatus('导出成功')
-      else setStatus(`导出失败: ${result?.error ?? '未知错误'}`)
+      if (result?.success) {
+        setStatus('导出成功')
+        setExportedFilePath(result.filePath)
+      } else {
+        setStatus(`导出失败: ${result?.error ?? '未知错误'}`)
+      }
     } catch { setStatus('导出失败') }
     finally { setIsExporting(false) }
   }, [])
+
+  const handleOpenInObsidian = useCallback(async () => {
+    if (!exportedFilePath) return
+    try {
+      const result = await sendToBackground({ action: 'open-in-obsidian', filePath: exportedFilePath }) as { success: boolean; error?: string }
+      if (!result?.success) setStatus(`打开失败: ${result?.error ?? '未知错误'}`)
+    } catch { setStatus('打开失败') }
+  }, [exportedFilePath])
 
   return (
     <div className="w-[360px] p-5 font-sans">
@@ -79,7 +93,14 @@ export default function App() {
       <LanguageSelector targetLang={targetLang} onChange={handleTargetLangChange} />
       <StyleSelector activePresetId={activePresetId} customPresets={customPresets} onChange={handlePresetChange} />
       <TranslateBar mode={displayMode} onModeChange={handleModeChange} onTranslate={handleTranslate} isTranslating={isTranslating} progress={progress} />
-      <StatusBar providerName={providerName} modelId={modelId} status={status} />
+      <StatusBar
+        providerName={providerName}
+        modelId={modelId}
+        status={status}
+        action={exportedFilePath && status === '导出成功'
+          ? { label: '在 Obsidian 打开', onClick: handleOpenInObsidian }
+          : undefined}
+      />
       <div className="mt-4 pt-3 border-t border-gray-100">
         <button onClick={() => setShowExport(true)} className="w-full py-2.5 bg-primary-light border border-primary-border rounded-lg text-[13px] text-primary-dark cursor-pointer hover:bg-primary-border/30">📤 导出到 Obsidian</button>
       </div>

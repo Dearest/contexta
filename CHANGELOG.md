@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2] - 2026-04-21
+
+### Added
+
+- 导出到 Obsidian 成功后，状态条显示「在 Obsidian 打开」按钮，一键切换到 Obsidian 并打开刚导出的文档。依赖 Local REST API 插件的 `POST /open/{filename}` 端点。
+
 ## [0.2.1] - 2026-04-21
 
 ### Fixed

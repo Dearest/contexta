@@ -3,7 +3,7 @@ import { getStorage } from '@/lib/storage'
 import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang } from '@/lib/translator'
 import { resolveActiveProvider, fetchModels } from '@/lib/providers'
 import type { Message, ExtractedArticle } from '@/lib/types'
-import { buildFrontmatterAndCallouts, exportToObsidian } from '@/lib/obsidian'
+import { buildFrontmatterAndCallouts, exportToObsidian, openInObsidian } from '@/lib/obsidian'
 
 // lastArticle kept for retry (paragraph prev/next context for LLM prompt)
 let lastArticle: ExtractedArticle | null = null
@@ -29,6 +29,8 @@ export default defineBackground(() => {
         return handleFetchModels(message)
       case 'export-obsidian':
         return handleExport(message)
+      case 'open-in-obsidian':
+        return handleOpenInObsidian(message)
       case 'retry-paragraph':
         return handleRetry(message, sender)
     }
@@ -244,9 +246,21 @@ async function handleExport(
     const header = buildFrontmatterAndCallouts(metadata, summary, quotes)
     const fullMarkdown = header + contentMarkdown
 
-    await exportToObsidian(obsidianConfig, metadata.title, fullMarkdown)
-    return { action: 'export-result', success: true }
+    const filePath = await exportToObsidian(obsidianConfig, metadata.title, fullMarkdown)
+    return { action: 'export-result', success: true, filePath }
   } catch (err) {
     return { action: 'export-result', success: false, error: String(err) }
+  }
+}
+
+async function handleOpenInObsidian(
+  message: Extract<Message, { action: 'open-in-obsidian' }>,
+) {
+  try {
+    const obsidianConfig = await getStorage('obsidianConfig')
+    await openInObsidian(obsidianConfig, message.filePath)
+    return { action: 'open-in-obsidian-result', success: true }
+  } catch (err) {
+    return { action: 'open-in-obsidian-result', success: false, error: String(err) }
   }
 }

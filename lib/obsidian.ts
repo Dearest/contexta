@@ -44,7 +44,7 @@ export async function exportToObsidian(
   config: ObsidianConfig,
   title: string,
   markdown: string,
-): Promise<void> {
+): Promise<string> {
   const safeName = title.replace(/[\\/:*?"<>|]/g, '-').slice(0, 100)
   const path = `${config.vaultPath.replace(/\/$/, '')}/${safeName}.md`
 
@@ -56,6 +56,25 @@ export async function exportToObsidian(
       'Content-Type': 'text/markdown',
     },
     body: markdown,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Obsidian API error: ${response.status} ${response.statusText}`)
+  }
+
+  return path
+}
+
+export async function openInObsidian(
+  config: ObsidianConfig,
+  filePath: string,
+): Promise<void> {
+  const url = `${config.apiUrl.replace(/\/$/, '')}/open/${encodeURIComponent(filePath)}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+    },
   })
 
   if (!response.ok) {

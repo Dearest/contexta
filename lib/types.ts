@@ -89,7 +89,9 @@ export type Message =
   | { action: 'clear-translations' }
   | { action: 'switch-mode'; mode: DisplayMode }
   | { action: 'export-obsidian'; options: ExportOptions }
-  | { action: 'export-result'; success: boolean; error?: string }
+  | { action: 'export-result'; success: boolean; error?: string; filePath?: string }
+  | { action: 'open-in-obsidian'; filePath: string }
+  | { action: 'open-in-obsidian-result'; success: boolean; error?: string }
   | { action: 'retry-paragraph'; paragraphId: string }
   | { action: 'build-export-markdown'; format: ExportFormat }
   | { action: 'fetch-models'; providerId: string }

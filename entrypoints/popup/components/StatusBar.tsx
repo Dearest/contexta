@@ -1,6 +1,11 @@
-interface Props { providerName: string; modelId: string; status?: string }
+interface Props {
+  providerName: string
+  modelId: string
+  status?: string
+  action?: { label: string; onClick: () => void }
+}
 
-export default function StatusBar({ providerName, modelId, status }: Props) {
+export default function StatusBar({ providerName, modelId, status, action }: Props) {
   const display = providerName && modelId ? `${providerName} · ${modelId}` : '未配置服务商'
 
   if (status) {
@@ -12,6 +17,17 @@ export default function StatusBar({ providerName, modelId, status }: Props) {
           isSuccess ? 'bg-primary-light text-primary-dark' : 'bg-red-50 text-red-600'
         }`}>
           {isSuccess ? '✓ ' : ''}{status}
+          {isSuccess && action && (
+            <>
+              {' · '}
+              <button
+                onClick={action.onClick}
+                className="underline underline-offset-2 hover:text-primary cursor-pointer"
+              >
+                {action.label}
+              </button>
+            </>
+          )}
         </div>
       )
     }
