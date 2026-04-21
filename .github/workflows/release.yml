@@ -32,6 +32,20 @@ jobs:
       - name: Create ZIP for sideloading
         run: cd dist/chrome-mv3 && zip -r ../../contexta.zip .
 
+      - name: Extract changelog for this version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[?" ver "\\]?" { flag=1; next }
+            flag && /^## / { exit }
+            flag { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "No changelog section found for version $VERSION" >&2
+            exit 1
+          fi
+          cat release_notes.md
+
       - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,4 +54,4 @@ jobs:
             contexta.crx \
             contexta.zip \
             --title "Contexta ${{ github.ref_name }}" \
-            --generate-notes
+            --notes-file release_notes.md
