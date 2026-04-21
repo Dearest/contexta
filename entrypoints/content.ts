@@ -243,11 +243,13 @@ export default defineContentScript({
       }
 
       const TurndownService = (await import('turndown')).default
+      const { gfm } = await import('turndown-plugin-gfm')
       const turndown = new TurndownService({
         headingStyle: 'atx',
         codeBlockStyle: 'fenced',
         bulletListMarker: '-',
       })
+      turndown.use(gfm)
 
       // Read translations directly from the DOM
       const normalize = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -271,8 +273,21 @@ export default defineContentScript({
       if (format !== 'source-only') {
         const TEXT_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption, dt, dd'
         const elements = doc.body.querySelectorAll(TEXT_SELECTOR)
+        const processed = new Set<Element>()
 
         for (const el of elements) {
+          // Skip descendants of already-processed blocks. Extractor captures both
+          // outer cells (th/td) and inner blocks (p) when they nest, so the same
+          // text lives at two depths. Replacing/injecting at both creates duplicate
+          // or column-mismatched output. The outer block wins (documented order).
+          let ancestor = el.parentElement
+          let nested = false
+          while (ancestor) {
+            if (processed.has(ancestor)) { nested = true; break }
+            ancestor = ancestor.parentElement
+          }
+          if (nested) continue
+
           const key = normalize(el.textContent || '')
           const translation = textMap.get(key)
           if (!translation) continue
@@ -284,6 +299,7 @@ export default defineContentScript({
             tEl.innerHTML = translation
             el.parentNode?.insertBefore(tEl, el.nextSibling)
           }
+          processed.add(el)
         }
       }
 

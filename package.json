@@ -2,7 +2,7 @@
   "name": "contexta",
   "description": "AI-powered web article translation",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -37,7 +37,8 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "sonner": "^2.0.7",
-    "turndown": "^7.2.4"
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",

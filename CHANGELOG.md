@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.1] - 2026-04-21
+
+### Fixed
+
+- 导出到 Obsidian 时表格结构丢失：Turndown 默认不支持 `<table>`，导致每个单元格被输出为独立段落。引入 `turndown-plugin-gfm` 修复。
+- 嵌套结构（如 `<th><p>...</p></th>`）被提取为两个翻译单元时，导出阶段会重复替换/插入，target-only 下单元格内容错位、bilingual 下行列混乱。导出遍历增加「已处理块」跳过逻辑，最外层块优先。
+
+### Added
+
+- 导出支持带语言标识的代码块（`<pre><code class="language-xxx">` → ` ```xxx `）、删除线（`~~...~~`）、任务列表（`- [ ]` / `- [x]`），通过 `turndown-plugin-gfm` 一并启用。
+
 ## [0.2.0] - 2026-04-18
 
 ### Added
