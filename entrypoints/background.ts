@@ -1,6 +1,6 @@
 import { onMessage, sendToTab } from '@/lib/messages'
 import { getStorage } from '@/lib/storage'
-import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang, testProvider, explainError } from '@/lib/translator'
+import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang, testProvider, explainError, streamSelection } from '@/lib/translator'
 import { resolveActiveProvider, fetchModels } from '@/lib/providers'
 import type { Message, ExtractedArticle, DisplayMode } from '@/lib/types'
 import { buildFrontmatterAndCallouts, exportToObsidian, openInObsidian, testObsidian } from '@/lib/obsidian'
@@ -47,6 +47,8 @@ export default defineBackground(() => {
         return handleTestProvider(message)
       case 'test-obsidian':
         return testObsidian(await getStorage('obsidianConfig'))
+      case 'translate-selection':
+        return handleTranslateSelection(message, sender)
       case 'export-obsidian':
         return handleExport(message)
       case 'open-in-obsidian':
@@ -229,6 +231,57 @@ async function handleTestProvider(
   const provider = providers.find((p) => p.id === message.providerId)
   if (!provider) return { ok: false, error: '找不到该服务商' }
   return testProvider(provider, message.modelId)
+}
+
+async function handleTranslateSelection(
+  message: Extract<Message, { action: 'translate-selection' }>,
+  sender: chrome.runtime.MessageSender,
+) {
+  const tabId = sender.tab?.id
+  if (!tabId) return
+
+  const { requestId } = message
+  const fail = (error: string) =>
+    sendToTab(tabId, { action: 'selection-error', requestId, error })
+
+  const [providers, activeModel, quickModel, targetLang] = await Promise.all([
+    getStorage('providers'),
+    getStorage('activeModel'),
+    getStorage('quickModel'),
+    getStorage('targetLang'),
+  ])
+
+  // Prefer the dedicated fast model, fall back to the main one
+  const resolved =
+    resolveActiveProvider(providers, quickModel) ??
+    resolveActiveProvider(providers, activeModel)
+  if (!resolved) {
+    await fail('请先在设置中配置服务商和模型')
+    return
+  }
+
+  let reasoningNotified = false
+  try {
+    await streamSelection(
+      resolved.provider,
+      resolved.modelId,
+      message.text,
+      targetLang,
+      (chunk) => {
+        // Fire-and-forget: awaiting each chunk would serialize the stream
+        // behind message round-trips and defeat the point of streaming.
+        sendToTab(tabId, { action: 'selection-chunk', requestId, chunk }).catch(() => {})
+      },
+      () => {
+        if (reasoningNotified) return // one notification is enough
+        reasoningNotified = true
+        sendToTab(tabId, { action: 'selection-reasoning', requestId }).catch(() => {})
+      },
+    )
+    await sendToTab(tabId, { action: 'selection-done', requestId })
+  } catch (err) {
+    await fail(explainError(err))
+  }
 }
 
 async function handleExport(

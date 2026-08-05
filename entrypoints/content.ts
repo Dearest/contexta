@@ -9,6 +9,13 @@ import {
   clearAllTranslations,
   switchDisplayMode,
 } from '@/lib/injector'
+import {
+  initSelectionTranslation,
+  handleSelectionChunk,
+  handleSelectionReasoning,
+  handleSelectionDone,
+  handleSelectionError,
+} from '@/lib/selection'
 import type { Message, DisplayMode, ExportFormat, ArticleMetadata } from '@/lib/types'
 
 export default defineContentScript({
@@ -19,8 +26,12 @@ export default defineContentScript({
     let lastMetadata: ArticleMetadata | null = null
 
     // Load saved display mode
-    const stored = (await chrome.storage.local.get('displayMode')) as { displayMode?: DisplayMode }
+    const stored = (await chrome.storage.local.get(['displayMode', 'selectionEnabled'])) as {
+      displayMode?: DisplayMode
+      selectionEnabled?: boolean
+    }
     if (stored.displayMode) currentMode = stored.displayMode
+    let selectionEnabled = stored.selectionEnabled !== false
 
     onMessage((message) => {
       switch (message.action) {
@@ -46,9 +57,31 @@ export default defineContentScript({
           currentMode = message.mode
           switchDisplayMode(currentMode)
           return
+        case 'selection-chunk':
+          handleSelectionChunk(message.requestId, message.chunk)
+          return
+        case 'selection-reasoning':
+          handleSelectionReasoning(message.requestId)
+          return
+        case 'selection-done':
+          handleSelectionDone(message.requestId)
+          return
+        case 'selection-error':
+          handleSelectionError(message.requestId, message.error)
+          return
         case 'build-export-markdown':
           // Returns Promise — onMessage wrapper will use sendResponse
           return buildExportMarkdown(message.format)
+      }
+    })
+
+    initSelectionTranslation(() => selectionEnabled)
+
+    // Keep the toggle live so turning it off in Options takes effect without
+    // reloading every open tab
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.selectionEnabled) {
+        selectionEnabled = changes.selectionEnabled.newValue !== false
       }
     })
 

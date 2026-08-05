@@ -19,6 +19,8 @@ type SectionId = (typeof SECTIONS)[number]['id']
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [activeModel, setActiveModel] = useState<ActiveModel | null>(null)
+  const [quickModel, setQuickModel] = useState<ActiveModel | null>(null)
+  const [selectionEnabled, setSelectionEnabled] = useState(true)
   const [customPresets, setCustomPresets] = useState<TranslationPreset[]>([])
   const [obsidianConfig, setObsidianConfig] = useState<ObsidianConfigType>(DEFAULT_OBSIDIAN_CONFIG)
   const [loading, setLoading] = useState(true)
@@ -74,8 +76,9 @@ export default function App() {
   }, [])
 
   async function loadSettings() {
-    const [p, am, cp, oc] = await Promise.all([
+    const [p, am, qm, se, cp, oc] = await Promise.all([
       getStorage('providers'), getStorage('activeModel'),
+      getStorage('quickModel'), getStorage('selectionEnabled'),
       getStorage('customPresets'), getStorage('obsidianConfig'),
     ])
     // Migration: modelId used to live only on activeModel. Backfill it onto the
@@ -91,6 +94,8 @@ export default function App() {
 
     setProviders(loadedProviders)
     setActiveModel(am ?? null)
+    setQuickModel(qm ?? null)
+    setSelectionEnabled(se !== false)
     setCustomPresets(cp ?? [])
     setObsidianConfig(loadedObsidian)
     providersRef.current = loadedProviders
@@ -106,6 +111,16 @@ export default function App() {
   async function handleActiveModelChange(active: ActiveModel | null) {
     setActiveModel(active)
     await setStorage('activeModel', active)
+    flashSaved()
+  }
+  async function handleQuickModelChange(quick: ActiveModel | null) {
+    setQuickModel(quick)
+    await setStorage('quickModel', quick)
+    flashSaved()
+  }
+  async function handleSelectionEnabledChange(enabled: boolean) {
+    setSelectionEnabled(enabled)
+    await setStorage('selectionEnabled', enabled)
     flashSaved()
   }
   async function handlePresetsChange(presets: TranslationPreset[]) {
@@ -151,7 +166,7 @@ export default function App() {
         {loading ? (
           <p className="text-sm text-gray-400">加载中...</p>
         ) : section === 'providers' ? (
-          <ProviderManager providers={providers} activeModel={activeModel} onProvidersChange={handleProvidersChange} onActiveModelChange={handleActiveModelChange} onFlush={flushSave} />
+          <ProviderManager providers={providers} activeModel={activeModel} onProvidersChange={handleProvidersChange} onActiveModelChange={handleActiveModelChange} quickModel={quickModel} onQuickModelChange={handleQuickModelChange} selectionEnabled={selectionEnabled} onSelectionEnabledChange={handleSelectionEnabledChange} onFlush={flushSave} />
         ) : section === 'presets' ? (
           <PresetManager customPresets={customPresets} onChange={handlePresetsChange} />
         ) : (

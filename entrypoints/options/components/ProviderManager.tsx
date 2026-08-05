@@ -5,13 +5,17 @@ import ProviderForm from './ProviderForm'
 interface Props {
   providers: Provider[]
   activeModel: ActiveModel | null
+  quickModel: ActiveModel | null
   onProvidersChange: (providers: Provider[]) => void
   onActiveModelChange: (active: ActiveModel | null) => void
+  onQuickModelChange: (quick: ActiveModel | null) => void
+  selectionEnabled: boolean
+  onSelectionEnabledChange: (enabled: boolean) => void
   /** Persist pending debounced edits before Background reads them */
   onFlush: () => Promise<void>
 }
 
-export default function ProviderManager({ providers, activeModel, onProvidersChange, onActiveModelChange, onFlush }: Props) {
+export default function ProviderManager({ providers, activeModel, quickModel, onProvidersChange, onActiveModelChange, onQuickModelChange, selectionEnabled, onSelectionEnabledChange, onFlush }: Props) {
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [addError, setAddError] = useState('')
@@ -32,10 +36,16 @@ export default function ProviderManager({ providers, activeModel, onProvidersCha
     onActiveModelChange({ providerId, modelId })
   }
 
+  function handleSetQuick(providerId: string, modelId: string) {
+    onQuickModelChange({ providerId, modelId })
+  }
+
   function handleDelete(providerId: string) {
     onProvidersChange(providers.filter((p) => p.id !== providerId))
-    // Otherwise activeModel dangles and translation fails with an opaque error
+    // Otherwise the stored reference dangles and translation fails with an
+    // opaque error instead of a clear "not configured" message
     if (activeModel?.providerId === providerId) onActiveModelChange(null)
+    if (quickModel?.providerId === providerId) onQuickModelChange(null)
   }
 
   function handleAddProvider() {
@@ -75,13 +85,40 @@ export default function ProviderManager({ providers, activeModel, onProvidersCha
         <p className="text-sm text-gray-400 mt-1">配置翻译使用的模型服务，点击展开编辑</p>
       </div>
 
+      <div className="flex items-start justify-between gap-4 border border-gray-200 rounded-xl px-4 py-3 mb-4 bg-white">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-800">划词翻译</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {quickModel
+              ? `选中网页文字后点绿点翻译，使用 ${quickModel.modelId}`
+              : '选中网页文字后点绿点翻译。未指定划词模型，将使用当前模型 — 建议单独指定一个快的'}
+          </p>
+        </div>
+        <button
+          role="switch"
+          aria-checked={selectionEnabled}
+          className={`relative w-10 h-6 rounded-full border-none cursor-pointer flex-shrink-0 transition-colors ${
+            selectionEnabled ? 'bg-primary' : 'bg-gray-300'
+          }`}
+          onClick={() => onSelectionEnabledChange(!selectionEnabled)}
+        >
+          <span
+            className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
+              selectionEnabled ? 'left-[18px]' : 'left-0.5'
+            }`}
+          />
+        </button>
+      </div>
+
       {providers.map((provider) => (
         <ProviderForm
           key={provider.id}
           provider={provider}
           activeModel={activeModel}
+          quickModel={quickModel}
           onUpdate={handleUpdate}
           onSetActive={handleSetActive}
+          onSetQuick={handleSetQuick}
           onDelete={handleDelete}
           onFlush={onFlush}
           expanded={expandedId === provider.id}

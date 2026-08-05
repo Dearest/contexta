@@ -35,6 +35,24 @@ export function buildUserPrompt(params: UserPromptParams): string {
   return parts.join('\n')
 }
 
+/**
+ * Deliberately much leaner than buildSystemPrompt: selection translation is
+ * latency-critical, there is no surrounding context to weigh, and no inline
+ * placeholder tags to preserve. The two-step literal-then-natural strategy is
+ * dropped because it makes short snippets noticeably slower for little gain.
+ */
+export function buildSelectionSystemPrompt(targetLang: string): string {
+  return `你是一位精通${targetLang}的专业翻译。将用户发送的文本翻译为${targetLang}。
+
+规则：
+- 产品名、公司名、专有名词、API 名保留英文（如 GitHub、TypeScript、useState）
+- 已有通行中文译法的普通词汇一律翻译，不要保留英文（如 computer science → 计算机科学）
+- 代码、变量名、命令、URL 不翻译
+- 英文与中文之间加半角空格
+- 保留原文的换行和列表结构
+- 只输出译文本身，不要解释、不要加引号、不要重复原文`
+}
+
 export function buildSummaryPrompt(translatedContent: string): string {
   return `请为以下文章生成一段简洁的摘要（3-5句话），概括文章的核心观点和主要内容。仅输出摘要文本，不要加标题或前缀。\n\n${translatedContent}`
 }

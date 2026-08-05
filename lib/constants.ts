@@ -81,4 +81,6 @@ export const DEFAULT_STORAGE: StorageSchema = {
   activePresetId: 'tech-blog',
   customPresets: [],
   obsidianConfig: DEFAULT_OBSIDIAN_CONFIG,
+  quickModel: null,
+  selectionEnabled: true,
 }

@@ -101,6 +101,13 @@ export type Message =
   | { action: 'fetch-models-result'; models: ModelInfo[]; error?: string }
   | { action: 'test-provider'; providerId: string; modelId: string }
   | { action: 'test-obsidian' }
+  // Selection translation streams back chunk-by-chunk, keyed by requestId so
+  // a stale request can be ignored when the user selects something else.
+  | { action: 'translate-selection'; requestId: string; text: string }
+  | { action: 'selection-chunk'; requestId: string; chunk: string }
+  | { action: 'selection-reasoning'; requestId: string }
+  | { action: 'selection-done'; requestId: string }
+  | { action: 'selection-error'; requestId: string; error: string }
 
 // === Connection Test ===
 
@@ -121,4 +128,7 @@ export interface StorageSchema {
   activePresetId: string
   customPresets: TranslationPreset[]
   obsidianConfig: ObsidianConfig
+  /** Model used for selection translation. Falls back to activeModel when null. */
+  quickModel: ActiveModel | null
+  selectionEnabled: boolean
 }

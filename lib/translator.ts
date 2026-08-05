@@ -1,7 +1,7 @@
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { Provider, Paragraph, ArticleMetadata, TranslationPreset, TestResult } from './types'
-import { buildSystemPrompt, buildUserPrompt, buildSummaryPrompt, buildQuotesPrompt } from './prompts'
+import { buildSystemPrompt, buildUserPrompt, buildSummaryPrompt, buildQuotesPrompt, buildSelectionSystemPrompt } from './prompts'
 import { BUILTIN_PRESETS } from './constants'
 
 interface TranslateOptions {
@@ -87,6 +87,40 @@ export async function generateQuotes(
     prompt: buildQuotesPrompt(translatedContent),
   })
   return text.trim()
+}
+
+/**
+ * Stream a selection translation. Selection translation is judged on latency,
+ * so this streams rather than waiting for the full completion like
+ * translateParagraph() does — perceived speed is dominated by time-to-first-token.
+ */
+export async function streamSelection(
+  provider: Provider,
+  modelId: string,
+  text: string,
+  targetLang: string,
+  onChunk: (chunk: string) => void,
+  onReasoning?: () => void,
+): Promise<void> {
+  const llm = createProvider(provider)
+  const result = streamText({
+    model: llm(modelId),
+    system: buildSelectionSystemPrompt(targetLang),
+    prompt: text,
+  })
+
+  // fullStream rather than textStream: reasoning models emit nothing on
+  // textStream while they think, which looks identical to a hang. Surfacing
+  // reasoning deltas lets the UI say "思考中" instead of showing a dead caret.
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      onChunk(part.text)
+    } else if (part.type === 'reasoning-delta') {
+      onReasoning?.()
+    } else if (part.type === 'error') {
+      throw part.error
+    }
+  }
 }
 
 /**

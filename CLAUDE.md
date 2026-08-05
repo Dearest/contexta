@@ -46,6 +46,8 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 | `injector.ts`   | `injectTranslation` (copies className, handles `\n`→`<br>`), `switchDisplayMode`, loading/error states   |
 | `messages.ts`   | `sendToBackground`, `sendToTab`, `onMessage` — Chrome message wrappers                                   |
 | `obsidian.ts`   | `buildFrontmatterAndCallouts` + `exportToObsidian` (PUT to local REST API). No Turndown (runs in SW).    |
+| `selection.ts`  | Selection translation UI — green dot + popup, all inside a Shadow DOM. Owns the streaming render state.   |
+| `providers.ts`  | `resolveActiveProvider`, `fetchModels` (tolerates 3 response shapes)                                       |
 
 ## Translation Flow
 
@@ -53,6 +55,23 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 2. Content Script: Defuddle extracts article HTML → `findContentContainer()` locates real DOM container (prefers single `<article>` element, falls back to heuristic) → `extractParagraphs()` finds text blocks → sends `extract-result` with paragraphs + `contentHtml` to Background
 3. Background: Skips paragraphs already in target language (`isAlreadyTargetLang` — CJK ratio for Chinese, Latin ratio for English). Loops remaining paragraphs sequentially, each with prev/next context. Pushes `translation-result` per paragraph.
 4. Content Script: Injects same-tag element after original with `data-contexta="translation"`, copies `className` from original for style parity. Converts `\n` in translation to `<br>`. Bilingual mode adds top dashed green line; target-only hides originals.
+
+## Selection Translation Flow
+
+Latency-critical, so it deviates from the paragraph pipeline in three ways.
+
+1. Content Script watches `mouseup`; a valid selection shows a green dot next to it (`lib/selection.ts`). Skips selections inside inputs/textareas/contenteditable.
+2. Clicking the dot sends `translate-selection` with a `requestId` and opens the popup
+3. Background resolves `quickModel` (falls back to `activeModel`) and calls `streamSelection()`, pushing `selection-chunk` per token, then `selection-done`
+4. Content Script appends each chunk into the popup; a `requestId` mismatch means a newer selection superseded this one, so the chunk is dropped
+
+Why it differs from paragraph translation:
+- **Streams** (`streamText`) instead of `generateText` — perceived speed is dominated by time-to-first-token
+- **Separate model** (`quickModel`) so the main translation can use a slower, better model
+- **Leaner prompt** (`buildSelectionSystemPrompt`) — no context, no placeholder-tag rules, no two-step strategy
+- **In-memory LRU cache** (50 entries) keyed on the selected text
+
+`streamSelection` consumes `fullStream`, not `textStream`: reasoning models emit nothing on `textStream` while thinking, which is indistinguishable from a hang. Reasoning deltas trigger `selection-reasoning`, and the popup explains the wait instead of showing a dead caret.
 
 ## Export Flow (Obsidian)
 
@@ -75,6 +94,7 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 | `lastDefuddleHtml`, `lastMetadata` | Content Script memory | Page lifetime | Export markdown building |
 | Provider config, API keys | `chrome.storage.local` | Permanent | User settings |
 | `_pendingTranslation` | `chrome.storage.local` | Permanent | tabId + translation params |
+| Selection cache | Content Script memory | Page lifetime | Skip re-translating the same selection |
 
 ## Translation Prompt System
 

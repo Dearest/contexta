@@ -4,8 +4,10 @@ import type { Provider, ActiveModel, ModelInfo, TestResult } from '@/lib/types'
 interface Props {
   provider: Provider
   activeModel: ActiveModel | null
+  quickModel: ActiveModel | null
   onUpdate: (provider: Provider) => void
   onSetActive: (providerId: string, modelId: string) => void
+  onSetQuick: (providerId: string, modelId: string) => void
   onDelete?: (providerId: string) => void
   onFlush: () => Promise<void>
   expanded: boolean
@@ -14,7 +16,7 @@ interface Props {
 
 const MODEL_LIST_LIMIT = 40
 
-export default function ProviderForm({ provider, activeModel, onUpdate, onSetActive, onDelete, onFlush, expanded, onToggle }: Props) {
+export default function ProviderForm({ provider, activeModel, quickModel, onUpdate, onSetActive, onSetQuick, onDelete, onFlush, expanded, onToggle }: Props) {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [modelFilter, setModelFilter] = useState('')
   const [fetchError, setFetchError] = useState('')
@@ -29,6 +31,8 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
   const modelId = provider.modelId ?? ''
   const isActive = activeModel?.providerId === provider.id
   const isActiveWithThisModel = isActive && activeModel?.modelId === modelId.trim()
+  const isQuick = quickModel?.providerId === provider.id
+  const isQuickWithThisModel = isQuick && quickModel?.modelId === modelId.trim()
 
   // Collapsed rows need to convey config state at a glance
   const summary = !provider.apiKey.trim()
@@ -108,6 +112,11 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
           {isActive && (
             <span className="text-xs text-primary bg-primary-light px-2 py-0.5 rounded-full">
               使用中
+            </span>
+          )}
+          {isQuick && (
+            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+              划词
             </span>
           )}
           {!provider.isPreset && onDelete && (
@@ -256,6 +265,14 @@ export default function ProviderForm({ provider, activeModel, onUpdate, onSetAct
           disabled={!modelId.trim() || isActiveWithThisModel}
         >
           {isActiveWithThisModel ? '当前使用中' : '设为当前使用'}
+        </button>
+        <button
+          className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm border-none cursor-pointer hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={() => onSetQuick(provider.id, modelId.trim())}
+          disabled={!modelId.trim() || isQuickWithThisModel}
+          title="划词翻译使用的模型，建议选一个快的"
+        >
+          {isQuickWithThisModel ? '划词模型 ✓' : '设为划词模型'}
         </button>
         <button
           className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm border-none cursor-pointer hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
