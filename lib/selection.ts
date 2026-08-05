@@ -28,6 +28,14 @@ let ui: SelectionUI | null = null
 let pendingText = ''
 let currentRequestId = ''
 let accumulated = ''
+let slowHintTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * How long to wait with zero output before suggesting a faster model. Measured
+ * against omniroute, where most models — reasoning or not — return in 2-3s, so
+ * anything past this really is unusually slow.
+ */
+const SLOW_HINT_MS = 5000
 
 const STYLE = `
 :host { all: initial; }
@@ -171,6 +179,7 @@ function getUI(): SelectionUI {
 }
 
 function hideAll() {
+  clearTimeout(slowHintTimer)
   if (!ui) return
   ui.dot.classList.add('hidden')
   ui.popup.classList.add('hidden')
@@ -233,33 +242,35 @@ function renderResult(text: string, streaming: boolean) {
 }
 
 /**
- * Reasoning models stay silent on the text stream while they think. Without
- * this the popup shows a blinking caret over an empty box, which reads as a
- * hang — and the wait can be 20s+.
+ * Reasoning models stay silent on the text stream while they think, so the
+ * popup would otherwise blink a caret over an empty box.
+ *
+ * Only the status line changes here. Most reasoning models still finish in
+ * 2-3s, so advising a model swap merely because reasoning exists is noise —
+ * that advice waits for SLOW_HINT_MS of actual silence instead.
  */
 export function handleSelectionReasoning(requestId: string) {
   if (requestId !== currentRequestId || accumulated) return
-  const u = getUI()
-  u.status.textContent = '模型思考中…'
-  u.body.classList.remove('caret')
-  u.body.textContent = '该模型会先推理再输出，建议在设置中把划词模型换成不带思考的快速模型'
-  u.body.classList.add('hint')
+  getUI().status.textContent = '模型思考中…'
 }
 
 export function handleSelectionChunk(requestId: string, chunk: string) {
   if (requestId !== currentRequestId) return // a newer request superseded this one
+  clearTimeout(slowHintTimer) // output started; the hint is no longer warranted
   accumulated += chunk
   renderResult(accumulated, true)
 }
 
 export function handleSelectionDone(requestId: string) {
   if (requestId !== currentRequestId) return
+  clearTimeout(slowHintTimer)
   renderResult(accumulated, false)
   if (accumulated.trim()) rememberInCache(pendingText, accumulated)
 }
 
 export function handleSelectionError(requestId: string, error: string) {
   if (requestId !== currentRequestId) return
+  clearTimeout(slowHintTimer)
   const u = getUI()
   u.body.classList.remove('caret')
   u.body.classList.add('error')
@@ -273,6 +284,7 @@ function translate(rect: DOMRect, text: string) {
 
   const cached = cache.get(text)
   if (cached) {
+    clearTimeout(slowHintTimer)
     currentRequestId = ''
     accumulated = cached
     renderResult(cached, false)
@@ -289,6 +301,16 @@ export function beginSelectionRequest(requestId: string) {
   currentRequestId = requestId
   accumulated = ''
   renderResult('', true)
+
+  clearTimeout(slowHintTimer)
+  slowHintTimer = setTimeout(() => {
+    // Still nothing after this long — now a model swap is worth suggesting
+    if (requestId !== currentRequestId || accumulated) return
+    const u = getUI()
+    u.body.classList.remove('caret')
+    u.body.classList.add('hint')
+    u.body.textContent = '这个模型响应较慢，可在设置中把划词模型换成更快的'
+  }, SLOW_HINT_MS)
 }
 
 /** Test seam: read what the popup is currently showing. */

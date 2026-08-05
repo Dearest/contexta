@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   beginSelectionRequest,
   handleSelectionChunk,
@@ -44,19 +44,17 @@ describe('selection popup streaming', () => {
     expect(getSelectionUIState().body).toBe('second')
   })
 
-  it('shows a hint while a reasoning model is thinking', () => {
+  it('says the model is thinking without nagging about model choice', () => {
     beginSelectionRequest('r1')
     handleSelectionReasoning('r1')
 
     const state = getSelectionUIState()
     expect(state.status).toBe('模型思考中…')
-    expect(state.isHint).toBe(true)
-    expect(state.body).toContain('快速模型')
-    // A blinking caret over hint text would read as broken output
-    expect(state.streaming).toBe(false)
+    // Most reasoning models finish in 2-3s; suggesting a swap here is noise
+    expect(state.isHint).toBe(false)
   })
 
-  it('replaces the reasoning hint once real output arrives', () => {
+  it('keeps the thinking status until real output arrives', () => {
     beginSelectionRequest('r1')
     handleSelectionReasoning('r1')
     handleSelectionChunk('r1', '真正的译文')
@@ -65,6 +63,54 @@ describe('selection popup streaming', () => {
     expect(state.isHint).toBe(false)
     expect(state.body).toBe('真正的译文')
     expect(state.status).toBe('翻译中…')
+  })
+
+  it('suggests a faster model only after prolonged silence', async () => {
+    vi.useFakeTimers()
+    try {
+      beginSelectionRequest('r1')
+      handleSelectionReasoning('r1')
+      expect(getSelectionUIState().isHint).toBe(false)
+
+      vi.advanceTimersByTime(5000)
+
+      const state = getSelectionUIState()
+      expect(state.isHint).toBe(true)
+      expect(state.body).toContain('更快')
+      // A blinking caret over hint text would read as broken output
+      expect(state.streaming).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not suggest a faster model once output has started', () => {
+    vi.useFakeTimers()
+    try {
+      beginSelectionRequest('r1')
+      handleSelectionChunk('r1', '已经有输出了')
+      vi.advanceTimersByTime(10000)
+
+      const state = getSelectionUIState()
+      expect(state.isHint).toBe(false)
+      expect(state.body).toBe('已经有输出了')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not fire a stale slow hint after the request is superseded', () => {
+    vi.useFakeTimers()
+    try {
+      beginSelectionRequest('r1')
+      beginSelectionRequest('r2')
+      handleSelectionChunk('r2', '新的译文')
+      vi.advanceTimersByTime(10000)
+
+      expect(getSelectionUIState().body).toBe('新的译文')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not show the reasoning hint after text has started', () => {

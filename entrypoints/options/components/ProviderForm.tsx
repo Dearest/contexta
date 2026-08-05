@@ -299,7 +299,7 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
         target: 'quick',
         value: quickModelId,
         onChange: setQuickModelId,
-        placeholder: '建议填一个更快的模型',
+        placeholder: '建议填一个响应更快的小模型',
       })}
 
       {fetchError && <p className="text-xs text-red-500 mb-2 break-all">{fetchError}</p>}
