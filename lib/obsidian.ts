@@ -1,4 +1,37 @@
-import type { ArticleMetadata, ObsidianConfig } from './types'
+import type { ArticleMetadata, ObsidianConfig, TestResult } from './types'
+
+/**
+ * Verify the Local REST API is reachable and the token is accepted.
+ * The root endpoint returns `{ status, versions, authenticated }`.
+ */
+export async function testObsidian(config: ObsidianConfig): Promise<TestResult> {
+  const base = config.apiUrl.replace(/\/$/, '')
+  if (!base) return { ok: false, error: '请先填写 REST API 地址' }
+  if (!config.apiToken.trim()) return { ok: false, error: '请先填写 API Token' }
+
+  let response: Response
+  try {
+    response = await fetch(`${base}/`, {
+      headers: { Authorization: `Bearer ${config.apiToken}` },
+    })
+  } catch {
+    return {
+      ok: false,
+      error: base.startsWith('https')
+        ? '无法连接。HTTPS 端口使用自签证书，需先在浏览器中访问该地址并信任证书，或改用 http://127.0.0.1:27123'
+        : '无法连接，请确认 Obsidian 已启动且 Local REST API 插件已开启',
+    }
+  }
+
+  if (response.status === 401) return { ok: false, error: 'API Token 无效' }
+  if (!response.ok) return { ok: false, error: `${response.status} ${response.statusText}` }
+
+  const data = await response.json().catch(() => null)
+  if (data && data.authenticated === false) {
+    return { ok: false, error: 'API Token 无效' }
+  }
+  return { ok: true, detail: data?.service ? `已连接 ${data.service}` : '连接正常' }
+}
 
 export function buildFrontmatterAndCallouts(
   metadata: ArticleMetadata,

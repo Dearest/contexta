@@ -19,7 +19,7 @@ export default defineContentScript({
     let lastMetadata: ArticleMetadata | null = null
 
     // Load saved display mode
-    const stored = await chrome.storage.local.get('displayMode')
+    const stored = (await chrome.storage.local.get('displayMode')) as { displayMode?: DisplayMode }
     if (stored.displayMode) currentMode = stored.displayMode
 
     onMessage((message) => {

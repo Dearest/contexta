@@ -66,7 +66,9 @@ export const TARGET_LANGUAGES = [
 ] as const
 
 export const DEFAULT_OBSIDIAN_CONFIG: ObsidianConfig = {
-  apiUrl: 'http://localhost:27123',
+  // 127.0.0.1 rather than localhost: on macOS the latter can resolve to ::1
+  // while the plugin only listens on IPv4.
+  apiUrl: 'http://127.0.0.1:27123',
   apiToken: '',
   vaultPath: 'Inbox/Contexta/',
 }

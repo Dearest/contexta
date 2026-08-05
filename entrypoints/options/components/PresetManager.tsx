@@ -12,6 +12,7 @@ export default function PresetManager({ customPresets, onChange }: Props) {
   const [editRules, setEditRules] = useState('')
   const [newName, setNewName] = useState('')
   const [newRules, setNewRules] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   function handleEdit(preset: TranslationPreset) {
     setEditingId(preset.id)
@@ -35,10 +36,12 @@ export default function PresetManager({ customPresets, onChange }: Props) {
 
   function handleDelete(id: string) {
     onChange(customPresets.filter((p) => p.id !== id))
+    setConfirmDeleteId(null)
   }
 
   function handleAdd() {
-    if (!newName.trim()) return
+    // Rules are the whole point of a preset — an empty one silently does nothing
+    if (!newName.trim() || !newRules.trim()) return
     const newPreset: TranslationPreset = {
       id: `custom-preset-${Date.now()}`,
       name: newName.trim(),
@@ -52,7 +55,12 @@ export default function PresetManager({ customPresets, onChange }: Props) {
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">自定义翻译规则</h2>
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-gray-800">翻译规则</h2>
+        <p className="text-sm text-gray-400 mt-1">
+          除内置的科技博客/学术论文/科普读物/忠实原文外，可添加自己的风格规则
+        </p>
+      </div>
 
       {customPresets.length === 0 && (
         <p className="text-sm text-gray-400 mb-4">暂无自定义规则，在下方添加</p>
@@ -102,19 +110,39 @@ export default function PresetManager({ customPresets, onChange }: Props) {
                 <p className="font-medium text-gray-800 text-sm">{preset.name}</p>
                 <p className="text-xs text-gray-500 mt-1 whitespace-pre-line line-clamp-2">{preset.rules || '暂无规则描述'}</p>
               </div>
-              <div className="flex gap-2 ml-3 flex-shrink-0">
-                <button
-                  className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs border-none cursor-pointer hover:bg-gray-200"
-                  onClick={() => handleEdit(preset)}
-                >
-                  编辑
-                </button>
-                <button
-                  className="px-3 py-1 bg-transparent text-red-500 rounded-lg text-xs border border-red-200 cursor-pointer hover:bg-red-50"
-                  onClick={() => handleDelete(preset.id)}
-                >
-                  删除
-                </button>
+              <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                {confirmDeleteId === preset.id ? (
+                  <>
+                    <span className="text-xs text-gray-500">确认删除？</span>
+                    <button
+                      className="px-3 py-1 bg-red-500 text-white rounded-lg text-xs border-none cursor-pointer hover:bg-red-600"
+                      onClick={() => handleDelete(preset.id)}
+                    >
+                      删除
+                    </button>
+                    <button
+                      className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs border-none cursor-pointer hover:bg-gray-200"
+                      onClick={() => setConfirmDeleteId(null)}
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs border-none cursor-pointer hover:bg-gray-200"
+                      onClick={() => handleEdit(preset)}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      className="px-3 py-1 bg-transparent text-red-500 rounded-lg text-xs border border-red-200 cursor-pointer hover:bg-red-50"
+                      onClick={() => setConfirmDeleteId(preset.id)}
+                    >
+                      删除
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -146,7 +174,7 @@ export default function PresetManager({ customPresets, onChange }: Props) {
         <button
           className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs border-none cursor-pointer hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleAdd}
-          disabled={!newName.trim()}
+          disabled={!newName.trim() || !newRules.trim()}
         >
           + 添加
         </button>

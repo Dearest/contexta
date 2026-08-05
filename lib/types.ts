@@ -6,6 +6,9 @@ export interface Provider {
   baseUrl: string
   apiKey: string
   isPreset: boolean
+  /** Last model entered for this provider. Persisted per-provider so switching
+   *  the active provider doesn't lose the others' model names. */
+  modelId?: string
 }
 
 export interface ModelInfo {
@@ -96,6 +99,17 @@ export type Message =
   | { action: 'build-export-markdown'; format: ExportFormat }
   | { action: 'fetch-models'; providerId: string }
   | { action: 'fetch-models-result'; models: ModelInfo[]; error?: string }
+  | { action: 'test-provider'; providerId: string; modelId: string }
+  | { action: 'test-obsidian' }
+
+// === Connection Test ===
+
+export interface TestResult {
+  ok: boolean
+  /** Short human-readable outcome, e.g. the model's reply or the vault name */
+  detail?: string
+  error?: string
+}
 
 // === Storage Schema ===
 

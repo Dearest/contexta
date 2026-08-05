@@ -1,9 +1,16 @@
 import { onMessage, sendToTab } from '@/lib/messages'
 import { getStorage } from '@/lib/storage'
-import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang } from '@/lib/translator'
+import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang, testProvider, explainError } from '@/lib/translator'
 import { resolveActiveProvider, fetchModels } from '@/lib/providers'
-import type { Message, ExtractedArticle } from '@/lib/types'
-import { buildFrontmatterAndCallouts, exportToObsidian, openInObsidian } from '@/lib/obsidian'
+import type { Message, ExtractedArticle, DisplayMode } from '@/lib/types'
+import { buildFrontmatterAndCallouts, exportToObsidian, openInObsidian, testObsidian } from '@/lib/obsidian'
+
+interface PendingTranslation {
+  mode: DisplayMode
+  targetLang: string
+  presetId: string
+  tabId: number
+}
 
 // lastArticle kept for retry (paragraph prev/next context for LLM prompt)
 let lastArticle: ExtractedArticle | null = null
@@ -14,8 +21,17 @@ async function saveArticle() {
 
 async function loadArticle() {
   if (lastArticle) return
-  const data = await chrome.storage.session.get('_lastArticle')
+  const data = (await chrome.storage.session.get('_lastArticle')) as {
+    _lastArticle?: ExtractedArticle
+  }
   if (data._lastArticle) lastArticle = data._lastArticle
+}
+
+async function getPendingTranslation(): Promise<PendingTranslation | undefined> {
+  const stored = (await chrome.storage.local.get('_pendingTranslation')) as {
+    _pendingTranslation?: PendingTranslation
+  }
+  return stored._pendingTranslation
 }
 
 export default defineBackground(() => {
@@ -27,6 +43,10 @@ export default defineBackground(() => {
         return handleExtractResult(message, sender)
       case 'fetch-models':
         return handleFetchModels(message)
+      case 'test-provider':
+        return handleTestProvider(message)
+      case 'test-obsidian':
+        return testObsidian(await getStorage('obsidianConfig'))
       case 'export-obsidian':
         return handleExport(message)
       case 'open-in-obsidian':
@@ -67,10 +87,10 @@ async function handleExtractResult(
   const tabId = sender.tab?.id
   if (!tabId) return
 
-  const pending = (await chrome.storage.local.get('_pendingTranslation'))._pendingTranslation
+  const pending = await getPendingTranslation()
   if (!pending) return
 
-  const { mode, targetLang, presetId } = pending
+  const { targetLang, presetId } = pending
   const { article } = message
 
   lastArticle = article
@@ -130,7 +150,7 @@ async function handleExtractResult(
       await sendToTab(tabId, {
         action: 'translation-error',
         paragraphId: paragraph.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: explainError(err),
       })
     }
   }
@@ -192,20 +212,29 @@ async function handleFetchModels(
 ) {
   const providers = await getStorage('providers')
   const provider = providers.find((p) => p.id === message.providerId)
-  if (!provider) return { action: 'fetch-models-result', models: [], error: 'Provider not found' }
+  if (!provider) return { action: 'fetch-models-result', models: [], error: '找不到该服务商' }
 
   try {
     const models = await fetchModels(provider)
     return { action: 'fetch-models-result', models }
   } catch (err) {
-    return { action: 'fetch-models-result', models: [], error: String(err) }
+    return { action: 'fetch-models-result', models: [], error: explainError(err) }
   }
+}
+
+async function handleTestProvider(
+  message: Extract<Message, { action: 'test-provider' }>,
+) {
+  const providers = await getStorage('providers')
+  const provider = providers.find((p) => p.id === message.providerId)
+  if (!provider) return { ok: false, error: '找不到该服务商' }
+  return testProvider(provider, message.modelId)
 }
 
 async function handleExport(
   message: Extract<Message, { action: 'export-obsidian' }>,
 ) {
-  const pending = (await chrome.storage.local.get('_pendingTranslation'))._pendingTranslation
+  const pending = await getPendingTranslation()
   const tabId = pending?.tabId
   if (!tabId) {
     return { action: 'export-result', success: false, error: '找不到翻译页面' }
