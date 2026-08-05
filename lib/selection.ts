@@ -186,27 +186,48 @@ function hideAll() {
   currentRequestId = ''
 }
 
+/**
+ * Selection position in page coordinates, not viewport coordinates. The dot and
+ * the popup are placed at different times, and the page may scroll in between —
+ * mixing a stale viewport rect with a current scroll offset misplaces the popup.
+ */
+interface PageRect {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+function toPageRect(rect: DOMRect): PageRect {
+  return {
+    left: rect.left + window.scrollX,
+    top: rect.top + window.scrollY,
+    right: rect.right + window.scrollX,
+    bottom: rect.bottom + window.scrollY,
+  }
+}
+
 /** Keep the popup inside the viewport horizontally */
 function clampLeft(left: number, width: number): number {
   const max = window.scrollX + document.documentElement.clientWidth - width - 8
   return Math.max(window.scrollX + 8, Math.min(left, max))
 }
 
-function showDot(rect: DOMRect) {
+function showDot(rect: PageRect) {
   const u = getUI()
   u.popup.classList.add('hidden')
-  u.dot.style.left = `${window.scrollX + rect.right + 6}px`
-  u.dot.style.top = `${window.scrollY + rect.bottom + 4}px`
+  u.dot.style.left = `${rect.right + 6}px`
+  u.dot.style.top = `${rect.bottom + 4}px`
   u.dot.classList.remove('hidden')
 }
 
-function showPopup(rect: DOMRect) {
+function showPopup(rect: PageRect) {
   const u = getUI()
   u.dot.classList.add('hidden')
   u.popup.classList.remove('hidden')
   u.body.classList.remove('error')
-  u.popup.style.left = `${clampLeft(window.scrollX + rect.left, 420)}px`
-  u.popup.style.top = `${window.scrollY + rect.bottom + 8}px`
+  u.popup.style.left = `${clampLeft(rect.left, 420)}px`
+  u.popup.style.top = `${rect.bottom + 8}px`
 }
 
 function isInsideOwnUI(target: EventTarget | null): boolean {
@@ -278,7 +299,7 @@ export function handleSelectionError(requestId: string, error: string) {
   u.status.textContent = ''
 }
 
-function translate(rect: DOMRect, text: string) {
+function translate(rect: PageRect, text: string) {
   showPopup(rect)
   pendingText = text
 
@@ -326,7 +347,7 @@ export function getSelectionUIState() {
 }
 
 export function initSelectionTranslation(isEnabled: () => boolean) {
-  let lastRect: DOMRect | null = null
+  let lastRect: PageRect | null = null
 
   document.addEventListener('mouseup', (e) => {
     if (!isEnabled() || isInsideOwnUI(e.target)) return
@@ -349,9 +370,9 @@ export function initSelectionTranslation(isEnabled: () => boolean) {
 
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) return
-      lastRect = rect
+      lastRect = toPageRect(rect)
       pendingText = text
-      showDot(rect)
+      showDot(lastRect)
     }, 0)
   })
 
