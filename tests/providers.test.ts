@@ -69,13 +69,51 @@ describe('fetchModels', () => {
     )
   })
 
-  it('throws on non-ok response', async () => {
+  it('parses a bare array response', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([{ id: 'model-a' }, 'model-b']),
+    })
+
+    expect(await fetchModels(mockProvider)).toEqual([
+      { id: 'model-a', name: 'model-a' },
+      { id: 'model-b', name: 'model-b' },
+    ])
+  })
+
+  it('parses a { models: [...] } response', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ models: [{ id: 'model-a', name: 'Model A' }] }),
+    })
+
+    expect(await fetchModels(mockProvider)).toEqual([{ id: 'model-a', name: 'Model A' }])
+  })
+
+  it('throws when the response has no recognizable model list', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ message: 'hello' }),
+    })
+
+    await expect(fetchModels(mockProvider)).rejects.toThrow('无法识别')
+  })
+
+  it('throws on non-ok response, including the body', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
       statusText: 'Unauthorized',
+      text: () => Promise.resolve('invalid api key'),
     })
 
     await expect(fetchModels(mockProvider)).rejects.toThrow('401')
+    await expect(fetchModels(mockProvider)).rejects.toThrow('invalid api key')
+  })
+
+  it('throws a readable error when the host is unreachable', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(fetchModels(mockProvider)).rejects.toThrow('无法连接')
   })
 })
