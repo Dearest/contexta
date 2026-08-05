@@ -151,9 +151,38 @@ export async function testProvider(
   }
 }
 
+/**
+ * Collect every message the error chain has to offer. AI SDK wraps failures:
+ * RetryError's own message is "Failed after 3 attempts. Last error: <inner>",
+ * and when the inner error has no message that reads as an empty error. The
+ * actionable detail (status code, response body) lives on the wrapped
+ * APICallError, so walk the chain instead of trusting the top-level message.
+ */
+function collectErrorText(err: unknown, depth = 0): string[] {
+  if (depth > 4 || err == null) return []
+  if (typeof err === 'string') return [err]
+  if (typeof err !== 'object') return [String(err)]
+
+  const e = err as Record<string, unknown>
+  const parts: string[] = []
+
+  if (typeof e.statusCode === 'number') parts.push(String(e.statusCode))
+  if (typeof e.responseBody === 'string' && e.responseBody) parts.push(e.responseBody)
+  if (typeof e.message === 'string' && e.message) parts.push(e.message)
+
+  parts.push(...collectErrorText(e.lastError, depth + 1))
+  parts.push(...collectErrorText(e.cause, depth + 1))
+  if (Array.isArray(e.errors)) {
+    for (const inner of e.errors) parts.push(...collectErrorText(inner, depth + 1))
+  }
+
+  return parts
+}
+
 /** Turn AI SDK / fetch errors into something a user can act on. */
 export function explainError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
+  const collected = collectErrorText(err)
+  const raw = collected.join(' | ') || (err instanceof Error ? err.message : String(err))
 
   if (/invalid json response|JSON parsing failed/i.test(raw)) {
     return '服务端返回的不是合法 JSON（部分网关默认走 SSE 流式响应）'
@@ -170,7 +199,14 @@ export function explainError(err: unknown): string {
   if (/429|rate limit|quota/i.test(raw)) {
     return '触发限流或额度不足'
   }
-  return raw.length > 200 ? `${raw.slice(0, 200)}…` : raw
+  if (/\b50[023]\b|bad gateway|service unavailable/i.test(raw)) {
+    return '服务端错误（该模型的上游可能暂时不可用，换个模型试试）'
+  }
+
+  // Dedupe: the same message often appears at several levels of the chain
+  const unique = [...new Set(collected.map((s) => s.trim()).filter(Boolean))].join(' | ')
+  const message = unique || raw
+  return message.length > 200 ? `${message.slice(0, 200)}…` : message
 }
 
 export function resolvePreset(

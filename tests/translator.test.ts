@@ -23,8 +23,43 @@ describe('explainError', () => {
     expect(explainError(new Error('429 rate limit exceeded'))).toContain('限流')
   })
 
+  it('explains upstream gateway failures', () => {
+    expect(explainError(new Error('error code: 502'))).toContain('上游')
+  })
+
   it('passes through unrecognized messages', () => {
     expect(explainError(new Error('something odd'))).toBe('something odd')
+  })
+
+  it('digs the real error out of a RetryError wrapper', () => {
+    // AI SDK shape: the useful detail is on lastError, not the outer message
+    const inner = Object.assign(new Error(''), {
+      statusCode: 502,
+      responseBody: 'error code: 502',
+    })
+    const outer = Object.assign(new Error('Failed after 3 attempts. Last error: '), {
+      lastError: inner,
+      errors: [inner],
+    })
+
+    const msg = explainError(outer)
+    expect(msg).toContain('上游')
+    expect(msg).not.toBe('Failed after 3 attempts. Last error: ')
+  })
+
+  it('surfaces a wrapped response body when nothing else matches', () => {
+    const outer = Object.assign(new Error('Failed after 3 attempts. Last error: '), {
+      lastError: Object.assign(new Error(''), { responseBody: 'model is cold, retry later' }),
+    })
+
+    expect(explainError(outer)).toContain('model is cold, retry later')
+  })
+
+  it('does not repeat identical messages from several chain levels', () => {
+    const inner = new Error('boom')
+    const outer = Object.assign(new Error('boom'), { cause: inner })
+
+    expect(explainError(outer)).toBe('boom')
   })
 
   it('truncates very long unrecognized messages', () => {
