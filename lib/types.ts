@@ -6,9 +6,12 @@ export interface Provider {
   baseUrl: string
   apiKey: string
   isPreset: boolean
-  /** Last model entered for this provider. Persisted per-provider so switching
-   *  the active provider doesn't lose the others' model names. */
+  /** Model for full-page translation. Persisted per-provider so switching the
+   *  active provider doesn't lose the others' model names. */
   modelId?: string
+  /** Model for selection translation. Empty means "same as modelId". Separate
+   *  because one provider commonly serves both a good model and a fast one. */
+  quickModelId?: string
 }
 
 export interface ModelInfo {

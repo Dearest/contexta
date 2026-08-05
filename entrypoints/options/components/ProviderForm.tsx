@@ -19,6 +19,8 @@ const MODEL_LIST_LIMIT = 40
 export default function ProviderForm({ provider, activeModel, quickModel, onUpdate, onSetActive, onSetQuick, onDelete, onFlush, expanded, onToggle }: Props) {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [modelFilter, setModelFilter] = useState('')
+  /** Which field the fetched model list currently fills in */
+  const [pickerTarget, setPickerTarget] = useState<'main' | 'quick' | null>(null)
   const [fetchError, setFetchError] = useState('')
   const [fetching, setFetching] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -29,10 +31,14 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
   // Model name lives on the provider, so it survives switching between
   // providers and page reloads without needing to be "activated" first.
   const modelId = provider.modelId ?? ''
+  const quickModelId = provider.quickModelId ?? ''
+  /** Selection translation falls back to the main model when left blank */
+  const effectiveQuickId = (quickModelId.trim() || modelId.trim())
+
   const isActive = activeModel?.providerId === provider.id
   const isActiveWithThisModel = isActive && activeModel?.modelId === modelId.trim()
   const isQuick = quickModel?.providerId === provider.id
-  const isQuickWithThisModel = isQuick && quickModel?.modelId === modelId.trim()
+  const isQuickWithThisModel = isQuick && quickModel?.modelId === effectiveQuickId
 
   // Collapsed rows need to convey config state at a glance
   const summary = !provider.apiKey.trim()
@@ -49,9 +55,90 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
     onUpdate({ ...provider, modelId: value })
   }
 
-  async function handleFetchModels() {
+  function setQuickModelId(value: string) {
+    onUpdate({ ...provider, quickModelId: value })
+  }
+
+  interface ModelFieldProps {
+    label: string
+    hint: string
+    target: 'main' | 'quick'
+    value: string
+    onChange: (value: string) => void
+    placeholder: string
+  }
+
+  /** Both model fields share one fetched list; pickerTarget says which one the
+   *  chips write into. */
+  function renderModelField({ label, hint, target, value, onChange, placeholder }: ModelFieldProps) {
+    const listOpen = pickerTarget === target && models.length > 0
+    return (
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-gray-500">{label}</label>
+          <button
+            className="text-xs text-primary bg-transparent border-none cursor-pointer hover:text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => (listOpen ? setPickerTarget(null) : handleFetchModels(target))}
+            disabled={fetching || !provider.apiKey.trim() || !provider.baseUrl.trim()}
+          >
+            {fetching && pickerTarget === target ? '获取中...' : listOpen ? '收起' : '选择模型'}
+          </button>
+        </div>
+
+        <input
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-primary"
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <p className="text-xs text-gray-400 mt-1">{hint}</p>
+
+        {listOpen && (
+          <div className="mt-2">
+            <input
+              className="w-full px-2 py-1 mb-1.5 border border-gray-200 rounded-md text-xs outline-none focus:border-primary"
+              type="text"
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              placeholder={`搜索 ${models.length} 个模型`}
+            />
+            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+              {filteredModels.slice(0, MODEL_LIST_LIMIT).map((m) => (
+                <button
+                  key={m.id}
+                  className={`px-2 py-1 rounded-md text-xs border-none cursor-pointer transition-colors ${
+                    value === m.id
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                  onClick={() => { onChange(m.id); setPickerTarget(null) }}
+                >
+                  {m.id}
+                </button>
+              ))}
+            </div>
+            {filteredModels.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1">没有匹配的模型</p>
+            )}
+            {filteredModels.length > MODEL_LIST_LIMIT && (
+              <p className="text-xs text-gray-400 mt-1">
+                还有 {filteredModels.length - MODEL_LIST_LIMIT} 个，请用上方搜索缩小范围
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  async function handleFetchModels(target: 'main' | 'quick') {
     setFetching(true)
     setFetchError('')
+    setPickerTarget(target)
+    setModelFilter('')
     try {
       await onFlush()
       const response = await chrome.runtime.sendMessage({
@@ -61,6 +148,7 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
       if (response?.error) {
         setFetchError(response.error)
         setModels([])
+        setPickerTarget(null)
       } else {
         setModels(response?.models ?? [])
         setFetchError('')
@@ -68,6 +156,7 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
     } catch {
       setFetchError('获取失败，请检查 API Key 和网络')
       setModels([])
+      setPickerTarget(null)
     } finally {
       setFetching(false)
     }
@@ -115,7 +204,10 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
             </span>
           )}
           {isQuick && (
-            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+            <span
+              className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full"
+              title={`划词翻译使用 ${quickModel?.modelId}`}
+            >
               划词
             </span>
           )}
@@ -190,73 +282,27 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
         />
       </div>
 
-      <div className="mb-3">
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-gray-500">模型</label>
-          <button
-            className="text-xs text-primary bg-transparent border-none cursor-pointer hover:text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleFetchModels}
-            disabled={fetching || !provider.apiKey.trim() || !provider.baseUrl.trim()}
-          >
-            {fetching ? '获取中...' : '获取列表'}
-          </button>
-        </div>
+      {renderModelField({
+        label: '翻译模型',
+        hint: '整页翻译使用',
+        target: 'main',
+        value: modelId,
+        onChange: setModelId,
+        placeholder: '输入模型名称，如 glm-4.7-flash',
+      })}
 
-        <input
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-primary"
-          type="text"
-          value={modelId}
-          onChange={(e) => setModelId(e.target.value)}
-          placeholder="输入模型名称，如 glm-4.7-flash"
-          autoComplete="off"
-          spellCheck={false}
-        />
+      {renderModelField({
+        label: '划词模型',
+        hint: modelId.trim()
+          ? `留空则与翻译模型相同（${modelId.trim()}）`
+          : '留空则与翻译模型相同',
+        target: 'quick',
+        value: quickModelId,
+        onChange: setQuickModelId,
+        placeholder: '建议填一个更快的模型',
+      })}
 
-        {models.length > 0 && (
-          <div className="mt-2">
-            <div className="flex items-center justify-between mb-1.5">
-              <input
-                className="flex-1 px-2 py-1 border border-gray-200 rounded-md text-xs outline-none focus:border-primary"
-                type="text"
-                value={modelFilter}
-                onChange={(e) => setModelFilter(e.target.value)}
-                placeholder={`搜索 ${models.length} 个模型`}
-              />
-              <button
-                className="ml-2 text-xs text-gray-400 bg-transparent border-none cursor-pointer hover:text-gray-600"
-                onClick={() => { setModels([]); setModelFilter('') }}
-              >
-                收起
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-              {filteredModels.slice(0, MODEL_LIST_LIMIT).map((m) => (
-                <button
-                  key={m.id}
-                  className={`px-2 py-1 rounded-md text-xs border-none cursor-pointer transition-colors ${
-                    modelId === m.id
-                      ? 'bg-primary text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                  onClick={() => setModelId(m.id)}
-                >
-                  {m.id}
-                </button>
-              ))}
-            </div>
-            {filteredModels.length === 0 && (
-              <p className="text-xs text-gray-400 mt-1">没有匹配的模型</p>
-            )}
-            {filteredModels.length > MODEL_LIST_LIMIT && (
-              <p className="text-xs text-gray-400 mt-1">
-                还有 {filteredModels.length - MODEL_LIST_LIMIT} 个，请用上方搜索缩小范围
-              </p>
-            )}
-          </div>
-        )}
-
-        {fetchError && <p className="text-xs text-red-500 mt-1 break-all">{fetchError}</p>}
-      </div>
+      {fetchError && <p className="text-xs text-red-500 mb-2 break-all">{fetchError}</p>}
 
       <div className="flex items-center gap-2 flex-wrap">
         <button
@@ -268,16 +314,17 @@ export default function ProviderForm({ provider, activeModel, quickModel, onUpda
         </button>
         <button
           className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm border-none cursor-pointer hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          onClick={() => onSetQuick(provider.id, modelId.trim())}
-          disabled={!modelId.trim() || isQuickWithThisModel}
-          title="划词翻译使用的模型，建议选一个快的"
+          onClick={() => onSetQuick(provider.id, effectiveQuickId)}
+          disabled={!effectiveQuickId || isQuickWithThisModel}
+          title="用上方的划词模型处理划词翻译"
         >
-          {isQuickWithThisModel ? '划词模型 ✓' : '设为划词模型'}
+          {isQuickWithThisModel ? '划词启用中' : '启用划词'}
         </button>
         <button
           className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm border-none cursor-pointer hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={handleTest}
           disabled={testing || !modelId.trim() || !provider.apiKey.trim()}
+          title="用翻译模型发一条最小请求"
         >
           {testing ? '测试中...' : '测试连接'}
         </button>

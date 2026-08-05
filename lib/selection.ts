@@ -33,17 +33,24 @@ const STYLE = `
 :host { all: initial; }
 .dot {
   position: absolute;
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #059669;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,.28);
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
   cursor: pointer;
   transition: transform .12s ease;
   z-index: 2147483647;
 }
-.dot:hover { transform: scale(1.25); }
+/* Keep the hit area comfortable even though the dot itself is small */
+.dot::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+}
+.dot:hover { transform: scale(1.4); }
 .popup {
   position: absolute;
   /* Wide enough that Chinese text doesn't wrap every few characters */
