@@ -1,3 +1,7 @@
+import type { InputContext } from './types'
+
+type PolishContext = InputContext
+
 interface UserPromptParams {
   title: string
   current: string
@@ -51,6 +55,64 @@ export function buildSelectionSystemPrompt(targetLang: string): string {
 - 英文与中文之间加半角空格
 - 保留原文的换行和列表结构
 - 只输出译文本身，不要解释、不要加引号、不要重复原文`
+}
+
+/**
+ * Input polish: turn mixed Chinese/English writing into idiomatic English.
+ *
+ * The "keep existing English" rule is load-bearing, not politeness. Left to
+ * itself the model rewrites the whole sentence, including the parts the user
+ * got right — which buries the learning signal (the user can no longer tell
+ * which bits they couldn't write), flattens their voice, and poisons the gap
+ * log with words they already knew.
+ *
+ * Output is plain text with a `---` separator rather than JSON: the free and
+ * small models this project targets are unreliable at JSON, and streaming an
+ * object would mean nothing renders until it parses. Here the polished text
+ * arrives first and can be applied the moment the separator shows up.
+ */
+export function buildPolishSystemPrompt(context?: PolishContext): string {
+  const lines = [
+    `你是一位精通英文写作的编辑。将用户发送的文本处理成地道的英文。`,
+    ``,
+    `【核心规则】`,
+    `- 中文片段必须译成英文`,
+    `- 英文片段原样保留，除非存在语法错误或明显不地道`,
+    `- 修改英文时最小化改动，不要为了「更好」而重写用户已经写对的句子`,
+    `- 保留原文的换行和段落结构`,
+    `- 产品名、公司名、API 名、代码、变量名、URL 不改动`,
+  ]
+
+  if (context) {
+    lines.push(``, `【场景】`)
+    lines.push(`- 页面：${context.host}${context.path}`)
+    if (context.placeholder) lines.push(`- 输入框提示：${context.placeholder}`)
+    if (context.charsLeft !== null && context.charsLeft !== undefined) {
+      // Chinese-to-English usually gets longer, so an over-limit result is
+      // simply unusable — this is a hard constraint, not a style hint.
+      lines.push(`- 【严格】输出不得超过 ${context.charsLeft} 个字符`)
+    }
+    lines.push(`根据以上场景调整语气和长度。`)
+  }
+
+  lines.push(
+    ``,
+    `【输出格式】严格按以下两段输出，不要有任何额外文字：`,
+    `第一段：处理后的完整英文，不加引号、不加解释`,
+    `第二段：修改说明，每行一条`,
+    `两段之间必须有单独一行 ---，这一行不能省略，也不能与其它内容同行`,
+    ``,
+    `修改说明格式：`,
+    `中文原文 | 英文 | 中文解释`,
+    `~ 原英文 | 改后英文 | 中文解释`,
+    `+ 新增内容 | 中文解释`,
+    ``,
+    `其中 ~ 开头表示修改用户已有的英文，+ 开头表示纯补充的词，无前缀表示由中文补全。`,
+    `解释用中文，一句话说清为什么这样改，不要泛泛而谈。`,
+    `若确实没有任何修改，--- 之后留空。`,
+  )
+
+  return lines.join('\n')
 }
 
 export function buildSummaryPrompt(translatedContent: string): string {

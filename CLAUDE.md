@@ -48,6 +48,8 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 | `obsidian.ts`   | `buildFrontmatterAndCallouts` + `exportToObsidian` (PUT to local REST API). No Turndown (runs in SW).    |
 | `selection.ts`  | Selection translation UI — green dot + popup, all inside a Shadow DOM. Owns the streaming render state.   |
 | `providers.ts`  | `resolveActiveProvider`, `fetchModels` (tolerates 3 response shapes)                                       |
+| `input-polish.ts` | Triple-space writing polish — trigger detection, panel, `execCommand` replacement. Own Shadow DOM host. |
+| `polish-parse.ts` | Incremental parser for the polish response. Drops malformed lines rather than losing the rewrite.      |
 
 ## Translation Flow
 
@@ -72,6 +74,22 @@ Why it differs from paragraph translation:
 - **In-memory LRU cache** (50 entries) keyed on the selected text
 
 `streamSelection` consumes `fullStream`, not `textStream`: reasoning models emit nothing on `textStream` while thinking, which is indistinguishable from a hang. Reasoning deltas trigger `selection-reasoning`, and the popup explains the wait instead of showing a dead caret.
+
+## Input Polish Flow
+
+Three spaces in any text field rewrite it into idiomatic English. Target case is **mixed writing** — English where the user is confident, Chinese where they aren't — so it's "finish my sentence", not grammar checking. Full design: `docs/input-polish.md`.
+
+1. `lib/input-polish.ts` watches `keydown` for 3 spaces within 400ms. **Skips `isComposing`/`keyCode === 229`** — otherwise IME candidate-selection spaces fire it constantly.
+2. Sends `polish-input` with the whole field's text (minus the two spaces that leaked through) plus `InputContext` (host/path/placeholder/charsLeft)
+3. Background resolves `polishModel → quickModel → activeModel`, calls `streamPolish()`, pushes `polish-chunk` per token
+4. `lib/polish-parse.ts` parses incrementally. The response is `<polished text>\n---\n<change lines>`; **the text is applied the moment `---` arrives**, without waiting for explanations
+5. Panel renders above the field: gaps (Chinese the user couldn't write) in emerald and larger, corrections in grey and smaller. Both shown — ordering steers attention, hiding would decide for the user
+6. Changes go to `record-gap` → appended to one Obsidian note via `POST /vault/{path}`, or `chrome.storage.local` when Obsidian isn't configured
+
+Key constraints, all load-bearing:
+- **`execCommand('insertText')`, never `setRangeText`/`.value =`** — it's the only path preserving the native undo stack (⌘Z is what lets replacement skip a confirm step) and it dispatches a trusted `input` event so React/Vue/Lexical see the change. Verified by reading content back; failure falls back to the clipboard.
+- **Prompt must forbid rewriting existing English.** Left alone the model rewrites whole sentences, burying which parts the user couldn't write, flattening their voice, and poisoning the gap log.
+- **Plain text, not JSON** — the free/small models this project targets are unreliable at JSON, and nothing renders until an object parses. No separator in the response → treat everything as the polished text.
 
 ## Export Flow (Obsidian)
 
@@ -135,3 +153,5 @@ When user says "发布版本", execute the following steps:
 7. **Push**: `git push && git push origin vX.Y.Z`
 
 The `v*` tag push triggers `.github/workflows/release.yml` which auto-builds CRX/ZIP and creates a GitHub Release.
+
+**Chrome Web Store submission** (manual, separate from the above): run `npm run zip:store` to produce `dist/contexta-<version>-chrome-store.zip` — this strips the `key` field from `manifest.json` that `npm run build`/`zip` leave in for stable local extension IDs, since the Store rejects uploads containing it ("key field is not allowed in manifest"). Upload that file, not `contexta.zip`. See `docs/chrome-web-store.md` and `docs/chrome-web-store-checklist.md`.

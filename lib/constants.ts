@@ -83,4 +83,8 @@ export const DEFAULT_STORAGE: StorageSchema = {
   obsidianConfig: DEFAULT_OBSIDIAN_CONFIG,
   quickModel: null,
   selectionEnabled: true,
+  inputPolishEnabled: true,
+  polishModel: null,
+  gapRecordEnabled: false,
+  gapNotePath: '英语表达缺口.md',
 }

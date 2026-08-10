@@ -1,4 +1,4 @@
-import type { ArticleMetadata, ObsidianConfig, TestResult } from './types'
+import type { ArticleMetadata, ChangeKind, GapEntry, ObsidianConfig, TestResult } from './types'
 
 /**
  * Verify the Local REST API is reachable and the token is accepted.
@@ -96,6 +96,69 @@ export async function exportToObsidian(
   }
 
   return path
+}
+
+const KIND_LABEL: Record<ChangeKind, string> = {
+  new: '新词',
+  fix: '修正',
+  add: '补充',
+}
+
+/** Fields are pipe-delimited, so a pipe inside one would break every parser downstream */
+function escapeField(s: string): string {
+  return s.replace(/[|\n]/g, ' ').trim()
+}
+
+export function formatGapEntries(entries: GapEntry[]): string {
+  return entries
+    .map((e) =>
+      [
+        '-',
+        e.date,
+        '|',
+        KIND_LABEL[e.kind],
+        '|',
+        escapeField(e.source) || '—',
+        '|',
+        escapeField(e.target),
+        '|',
+        escapeField(e.reason),
+        '|',
+        escapeField(e.host),
+      ].join(' '),
+    )
+    .join('\n')
+}
+
+/**
+ * Append expression gaps to a single running note.
+ *
+ * POST, not PUT: the Local REST API treats POST as append-and-create, while
+ * PUT (used for article export) overwrites. One append-only file keeps the log
+ * greppable and diffable — its value is aggregate statistics over months, not
+ * re-reading individual lines, which is why it isn't split into notes.
+ */
+export async function appendGapEntries(
+  config: ObsidianConfig,
+  notePath: string,
+  entries: GapEntry[],
+): Promise<void> {
+  if (!entries.length) return
+
+  const path = notePath.replace(/^\//, '')
+  const url = `${config.apiUrl.replace(/\/$/, '')}/vault/${encodeURIComponent(path)}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiToken}`,
+      'Content-Type': 'text/markdown',
+    },
+    body: `\n${formatGapEntries(entries)}`,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Obsidian API error: ${response.status} ${response.statusText}`)
+  }
 }
 
 export async function openInObsidian(

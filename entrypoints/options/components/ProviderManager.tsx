@@ -11,11 +11,48 @@ interface Props {
   onQuickModelChange: (quick: ActiveModel | null) => void
   selectionEnabled: boolean
   onSelectionEnabledChange: (enabled: boolean) => void
+  inputPolishEnabled: boolean
+  onInputPolishEnabledChange: (enabled: boolean) => void
   /** Persist pending debounced edits before Background reads them */
   onFlush: () => Promise<void>
 }
 
-export default function ProviderManager({ providers, activeModel, quickModel, onProvidersChange, onActiveModelChange, onQuickModelChange, selectionEnabled, onSelectionEnabledChange, onFlush }: Props) {
+function FeatureToggle({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 border border-gray-200 rounded-xl px-4 py-3 mb-3 bg-white">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-800">{title}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={checked}
+        className={`relative w-10 h-6 rounded-full border-none cursor-pointer flex-shrink-0 transition-colors ${
+          checked ? 'bg-primary' : 'bg-gray-300'
+        }`}
+        onClick={() => onChange(!checked)}
+      >
+        <span
+          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
+            checked ? 'left-[18px]' : 'left-0.5'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+export default function ProviderManager({ providers, activeModel, quickModel, onProvidersChange, onActiveModelChange, onQuickModelChange, selectionEnabled, onSelectionEnabledChange, inputPolishEnabled, onInputPolishEnabledChange, onFlush }: Props) {
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [addError, setAddError] = useState('')
@@ -85,29 +122,24 @@ export default function ProviderManager({ providers, activeModel, quickModel, on
         <p className="text-sm text-gray-400 mt-1">配置翻译使用的模型服务，点击展开编辑</p>
       </div>
 
-      <div className="flex items-start justify-between gap-4 border border-gray-200 rounded-xl px-4 py-3 mb-4 bg-white">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-800">划词翻译</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {quickModel
-              ? `选中网页文字后点绿点翻译，使用 ${quickModel.modelId}`
-              : '选中网页文字后点绿点翻译。未指定划词模型，将使用当前模型 — 建议单独指定一个快的'}
-          </p>
-        </div>
-        <button
-          role="switch"
-          aria-checked={selectionEnabled}
-          className={`relative w-10 h-6 rounded-full border-none cursor-pointer flex-shrink-0 transition-colors ${
-            selectionEnabled ? 'bg-primary' : 'bg-gray-300'
-          }`}
-          onClick={() => onSelectionEnabledChange(!selectionEnabled)}
-        >
-          <span
-            className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
-              selectionEnabled ? 'left-[18px]' : 'left-0.5'
-            }`}
-          />
-        </button>
+      <FeatureToggle
+        title="划词翻译"
+        description={
+          quickModel
+            ? `选中网页文字后点绿点翻译，使用 ${quickModel.modelId}`
+            : '选中网页文字后点绿点翻译。未指定划词模型，将使用当前模型 — 建议单独指定一个快的'
+        }
+        checked={selectionEnabled}
+        onChange={onSelectionEnabledChange}
+      />
+
+      <div className="mb-4">
+        <FeatureToggle
+          title="写作润色"
+          description="在任意输入框连按三下空格，把内容改写成地道英文。中英混写时，中文部分会被补全为英文"
+          checked={inputPolishEnabled}
+          onChange={onInputPolishEnabledChange}
+        />
       </div>
 
       {providers.map((provider) => (
