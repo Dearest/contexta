@@ -38,6 +38,25 @@ const SEPARATOR = /^-{3,}$/
 /** Bullet markers some models prepend to list items */
 const BULLET = /^[-*]\s+/
 
+/**
+ * Does this line look like a change entry rather than prose?
+ *
+ * Models drop the `---` line often enough that the separator can't be the only
+ * signal. Without this, a response that omits it but still lists its changes
+ * would have the entire list pasted into the user's input box — the worst
+ * possible outcome, and worse than showing nothing at all.
+ *
+ * Two pipes means three fields, which prose in this feature never has. One
+ * pipe counts only behind a `~`/`+` marker, which prose never starts with.
+ */
+function looksLikeChangeLine(raw: string): boolean {
+  const line = normalizePipes(raw).trim()
+  if (!line) return false
+  const pipes = (line.match(/\|/g) ?? []).length
+  if (pipes >= 2) return true
+  return pipes >= 1 && /^[~+]/.test(line)
+}
+
 /** Models occasionally emit the full-width pipe, especially mid-Chinese */
 function normalizePipes(line: string): string {
   return line.replace(/｜/g, '|')
@@ -92,6 +111,14 @@ export function createPolishParser(): PolishParser {
       out.bodyDone = bodyLines.join('\n').trim()
       return
     }
+    // Missing separator: the change list announces itself by its own shape
+    if (looksLikeChangeLine(line)) {
+      sawSeparator = true
+      out.bodyDone = bodyLines.join('\n').trim()
+      const change = parseChangeLine(line)
+      if (change) out.changes.push(change)
+      return
+    }
     bodyLines.push(line)
   }
 
@@ -114,8 +141,9 @@ export function createPolishParser(): PolishParser {
         consumeLine(buffer, out)
         buffer = ''
       }
-      // No separator in the entire response: treat everything as the polished
-      // text. Losing the explanations is bad; losing the rewrite is worse.
+      // Nothing in the response looked like a change list either — it really
+      // is all polished text. Losing explanations is bad; losing the rewrite
+      // is worse.
       if (!sawSeparator) {
         sawSeparator = true
         out.bodyDone = bodyLines.join('\n').trim()

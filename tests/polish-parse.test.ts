@@ -64,6 +64,54 @@ describe('polish response parsing', () => {
     expect(changes).toEqual([])
   })
 
+  it('finds the change list even when the model forgets the separator', () => {
+    // Verbatim from a real X compose box: the model produced a well-formed
+    // change list but no `---`. Treating it all as body pasted the
+    // explanations straight into the user's tweet.
+    const { body, changes } = parseAll(
+      [
+        'I want to learn psychology',
+        '',
+        '学习心理学 | learn psychology | 将中文词"心理学"翻译为英文"psychology"',
+        '~ I want learn | I want to learn | 补充不定式to，符合英语语法要求',
+      ].join('\n'),
+    )
+
+    expect(body).toBe('I want to learn psychology')
+    expect(changes).toEqual([
+      {
+        kind: 'new',
+        source: '学习心理学',
+        target: 'learn psychology',
+        reason: '将中文词"心理学"翻译为英文"psychology"',
+      },
+      {
+        kind: 'fix',
+        source: 'I want learn',
+        target: 'I want to learn',
+        reason: '补充不定式to，符合英语语法要求',
+      },
+    ])
+  })
+
+  it('applies the body at the implicit boundary, mid-stream', () => {
+    const parser = createPolishParser()
+    parser.push('I want to learn psychology\n\n')
+    const atFirstChange = parser.push('学习心理学 | learn psychology | 理由\n')
+
+    expect(atFirstChange.bodyDone).toBe('I want to learn psychology')
+    expect(atFirstChange.changes).toHaveLength(1)
+  })
+
+  it('does not mistake ordinary prose for a change line', () => {
+    const { body, changes } = parseAll(
+      'Ship it before Friday — the API returns a | delimited list.',
+    )
+
+    expect(body).toBe('Ship it before Friday — the API returns a | delimited list.')
+    expect(changes).toEqual([])
+  })
+
   it('recognises additions, which carry no source text', () => {
     const { changes } = parseAll('text\n---\n+ properly | 补充副词，明确「正常工作」的含义')
 
