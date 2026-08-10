@@ -284,19 +284,50 @@ function pageRectOf(el: HTMLElement) {
 }
 
 /**
- * Anchor above the field, aligned to its left edge — not to the caret, which
- * moves with every keystroke and would make the panel jitter.
+ * Which side the panel opened on. Decided once per open and then held: the
+ * panel starts as a short shimmer and grows as changes stream in, so deciding
+ * per-render would flip it from above to below mid-request.
+ */
+let panelSide: 'above' | 'below' = 'above'
+
+/** Below this much room above the field, opening upward isn't worth it */
+const MIN_SPACE_ABOVE = 160
+
+/** Status bar + footer + padding that sit outside the scrollable list */
+const PANEL_CHROME = 90
+
+function choosePanelSide(field: HTMLElement) {
+  const rect = pageRectOf(field)
+  const spaceAbove = rect.top - window.scrollY
+  const spaceBelow = window.scrollY + document.documentElement.clientHeight - rect.bottom
+  panelSide = spaceAbove >= MIN_SPACE_ABOVE || spaceAbove >= spaceBelow ? 'above' : 'below'
+}
+
+/**
+ * Anchor to the field's left edge — not to the caret, which moves with every
+ * keystroke and would make the panel jitter.
+ *
+ * The list is capped to whatever room the chosen side has, so a long change
+ * list scrolls inside the panel rather than growing past the viewport edge.
  */
 function positionPanel(field: HTMLElement) {
   const u = getUI()
   const rect = pageRectOf(field)
-  const panelHeight = u.panel.offsetHeight || 120
+
   const maxLeft = window.scrollX + document.documentElement.clientWidth - PANEL_WIDTH - 8
   u.panel.style.left = `${Math.max(window.scrollX + 8, Math.min(rect.left, maxLeft))}px`
 
-  const above = rect.top - panelHeight - 8
-  // Flip below only when there genuinely isn't room above
-  u.panel.style.top = above >= window.scrollY + 8 ? `${above}px` : `${rect.bottom + 8}px`
+  const room =
+    panelSide === 'above'
+      ? rect.top - window.scrollY - 16
+      : window.scrollY + document.documentElement.clientHeight - rect.bottom - 16
+  u.list.style.maxHeight = `${Math.max(80, room - PANEL_CHROME)}px`
+
+  // Reading offsetHeight flushes the max-height change, so this sees final size
+  u.panel.style.top =
+    panelSide === 'above'
+      ? `${rect.top - u.panel.offsetHeight - 8}px`
+      : `${rect.bottom + 8}px`
 }
 
 function positionRecall(field: HTMLElement) {
@@ -314,6 +345,7 @@ function showPending(field: HTMLElement) {
   u.list.innerHTML = '<div class="shimmer"></div><div class="shimmer"></div>'
   u.foot.textContent = ''
   u.panel.classList.remove('hidden', 'leaving')
+  choosePanelSide(field)
   positionPanel(field)
 }
 
@@ -379,13 +411,14 @@ function renderChanges(changes: PolishChange[], streaming: boolean) {
   }
 }
 
-function showError(message: string) {
+function showError(message: string, field: HTMLElement) {
   const u = getUI()
   u.status.textContent = message
   u.status.classList.add('error')
   u.list.innerHTML = ''
   u.foot.textContent = ''
   u.panel.classList.remove('hidden')
+  positionPanel(field)
   scheduleFade(0)
 }
 
@@ -427,6 +460,8 @@ export function handlePolishChunk(requestId: string, chunk: string) {
   if (changes.length) {
     active.changes.push(...changes)
     renderChanges(active.changes, true)
+    // Opened upward the panel grows away from its anchor, so re-anchor it
+    positionPanel(active.field)
   }
 }
 
@@ -448,7 +483,7 @@ export function handlePolishDone(requestId: string) {
 export function handlePolishError(requestId: string, error: string) {
   if (!active || active.requestId !== requestId) return
   stripLeakedSpaces(active.field)
-  showError(error)
+  showError(error, active.field)
   active = null
 }
 
@@ -614,6 +649,7 @@ export function initInputPolish(isEnabled: () => boolean) {
     u.foot.textContent = ''
     u.recall.classList.add('hidden')
     u.panel.classList.remove('hidden', 'leaving')
+    choosePanelSide(lastResult.field)
     positionPanel(lastResult.field)
     scheduleFade(lastResult.changes.length)
   })
