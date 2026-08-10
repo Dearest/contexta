@@ -135,3 +135,5 @@ When user says "发布版本", execute the following steps:
 7. **Push**: `git push && git push origin vX.Y.Z`
 
 The `v*` tag push triggers `.github/workflows/release.yml` which auto-builds CRX/ZIP and creates a GitHub Release.
+
+**Chrome Web Store submission** (manual, separate from the above): run `npm run zip:store` to produce `dist/contexta-<version>-chrome-store.zip` — this strips the `key` field from `manifest.json` that `npm run build`/`zip` leave in for stable local extension IDs, since the Store rejects uploads containing it ("key field is not allowed in manifest"). Upload that file, not `contexta.zip`. See `docs/chrome-web-store.md` and `docs/chrome-web-store-checklist.md`.
