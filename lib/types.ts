@@ -66,6 +66,42 @@ export interface ExtractedArticle {
   contentHtml?: string
 }
 
+// === Input Polish ===
+
+/** Page/field signals the model uses to pick tone and length. */
+export interface InputContext {
+  host: string
+  path: string
+  placeholder?: string
+  /** Characters still available in the field, null when unconstrained */
+  charsLeft: number | null
+}
+
+/**
+ * `new` — filled in from Chinese the user couldn't write in English.
+ * `fix` — English the user did write, corrected.
+ * `add` — words added outright, with no counterpart in the original.
+ */
+export type ChangeKind = 'new' | 'fix' | 'add'
+
+export interface PolishChange {
+  kind: ChangeKind
+  /** Empty when kind is 'add' */
+  source: string
+  target: string
+  reason: string
+}
+
+export interface GapEntry {
+  /** YYYY-MM-DD */
+  date: string
+  kind: ChangeKind
+  source: string
+  target: string
+  reason: string
+  host: string
+}
+
 // === Obsidian Export ===
 
 export type ExportFormat = 'target-only' | 'bilingual' | 'source-only'
@@ -111,6 +147,14 @@ export type Message =
   | { action: 'selection-reasoning'; requestId: string }
   | { action: 'selection-done'; requestId: string }
   | { action: 'selection-error'; requestId: string; error: string }
+  // Input polish mirrors the selection protocol (requestId guards against a
+  // superseded request), but renders entirely in the page — no popup involved.
+  | { action: 'polish-input'; requestId: string; text: string; context?: InputContext }
+  | { action: 'polish-chunk'; requestId: string; chunk: string }
+  | { action: 'polish-reasoning'; requestId: string }
+  | { action: 'polish-done'; requestId: string }
+  | { action: 'polish-error'; requestId: string; error: string }
+  | { action: 'record-gap'; entries: GapEntry[] }
 
 // === Connection Test ===
 
@@ -134,4 +178,12 @@ export interface StorageSchema {
   /** Model used for selection translation. Falls back to activeModel when null. */
   quickModel: ActiveModel | null
   selectionEnabled: boolean
+  /** Triple-space in an input field rewrites it into idiomatic English */
+  inputPolishEnabled: boolean
+  /** Model for input polish. Falls back to quickModel, then activeModel. */
+  polishModel: ActiveModel | null
+  /** Append expression gaps to Obsidian. Off means they stay in local storage. */
+  gapRecordEnabled: boolean
+  /** Vault-relative path of the append-only gap log */
+  gapNotePath: string
 }

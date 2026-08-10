@@ -1,7 +1,7 @@
 import { generateText, streamText } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { Provider, Paragraph, ArticleMetadata, TranslationPreset, TestResult } from './types'
-import { buildSystemPrompt, buildUserPrompt, buildSummaryPrompt, buildQuotesPrompt, buildSelectionSystemPrompt } from './prompts'
+import type { Provider, Paragraph, ArticleMetadata, TranslationPreset, TestResult, InputContext } from './types'
+import { buildSystemPrompt, buildUserPrompt, buildSummaryPrompt, buildQuotesPrompt, buildSelectionSystemPrompt, buildPolishSystemPrompt } from './prompts'
 import { BUILTIN_PRESETS } from './constants'
 
 interface TranslateOptions {
@@ -112,6 +112,40 @@ export async function streamSelection(
   // fullStream rather than textStream: reasoning models emit nothing on
   // textStream while they think, which looks identical to a hang. Surfacing
   // reasoning deltas lets the UI say "思考中" instead of showing a dead caret.
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      onChunk(part.text)
+    } else if (part.type === 'reasoning-delta') {
+      onReasoning?.()
+    } else if (part.type === 'error') {
+      throw part.error
+    }
+  }
+}
+
+/**
+ * Rewrite an input field's contents into idiomatic English.
+ *
+ * Streams for the same reason selection translation does — and consumes
+ * `fullStream` rather than `textStream` for the same reason too: a reasoning
+ * model emits nothing on `textStream` while thinking, which is
+ * indistinguishable from a hang.
+ */
+export async function streamPolish(
+  provider: Provider,
+  modelId: string,
+  text: string,
+  context: InputContext | undefined,
+  onChunk: (chunk: string) => void,
+  onReasoning?: () => void,
+): Promise<void> {
+  const llm = createProvider(provider)
+  const result = streamText({
+    model: llm(modelId),
+    system: buildPolishSystemPrompt(context),
+    prompt: text,
+  })
+
   for await (const part of result.fullStream) {
     if (part.type === 'text-delta') {
       onChunk(part.text)

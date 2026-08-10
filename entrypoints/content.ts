@@ -16,6 +16,13 @@ import {
   handleSelectionDone,
   handleSelectionError,
 } from '@/lib/selection'
+import {
+  initInputPolish,
+  handlePolishChunk,
+  handlePolishReasoning,
+  handlePolishDone,
+  handlePolishError,
+} from '@/lib/input-polish'
 import type { Message, DisplayMode, ExportFormat, ArticleMetadata } from '@/lib/types'
 
 export default defineContentScript({
@@ -26,12 +33,18 @@ export default defineContentScript({
     let lastMetadata: ArticleMetadata | null = null
 
     // Load saved display mode
-    const stored = (await chrome.storage.local.get(['displayMode', 'selectionEnabled'])) as {
+    const stored = (await chrome.storage.local.get([
+      'displayMode',
+      'selectionEnabled',
+      'inputPolishEnabled',
+    ])) as {
       displayMode?: DisplayMode
       selectionEnabled?: boolean
+      inputPolishEnabled?: boolean
     }
     if (stored.displayMode) currentMode = stored.displayMode
     let selectionEnabled = stored.selectionEnabled !== false
+    let inputPolishEnabled = stored.inputPolishEnabled !== false
 
     onMessage((message) => {
       switch (message.action) {
@@ -69,6 +82,18 @@ export default defineContentScript({
         case 'selection-error':
           handleSelectionError(message.requestId, message.error)
           return
+        case 'polish-chunk':
+          handlePolishChunk(message.requestId, message.chunk)
+          return
+        case 'polish-reasoning':
+          handlePolishReasoning(message.requestId)
+          return
+        case 'polish-done':
+          handlePolishDone(message.requestId)
+          return
+        case 'polish-error':
+          handlePolishError(message.requestId, message.error)
+          return
         case 'build-export-markdown':
           // Returns Promise — onMessage wrapper will use sendResponse
           return buildExportMarkdown(message.format)
@@ -76,12 +101,17 @@ export default defineContentScript({
     })
 
     initSelectionTranslation(() => selectionEnabled)
+    initInputPolish(() => inputPolishEnabled)
 
-    // Keep the toggle live so turning it off in Options takes effect without
+    // Keep the toggles live so turning one off in Options takes effect without
     // reloading every open tab
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes.selectionEnabled) {
+      if (area !== 'local') return
+      if (changes.selectionEnabled) {
         selectionEnabled = changes.selectionEnabled.newValue !== false
+      }
+      if (changes.inputPolishEnabled) {
+        inputPolishEnabled = changes.inputPolishEnabled.newValue !== false
       }
     })
 

@@ -1,9 +1,12 @@
 import { onMessage, sendToTab } from '@/lib/messages'
 import { getStorage } from '@/lib/storage'
-import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang, testProvider, explainError, streamSelection } from '@/lib/translator'
+import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang, testProvider, explainError, streamSelection, streamPolish } from '@/lib/translator'
 import { resolveActiveProvider, fetchModels } from '@/lib/providers'
-import type { Message, ExtractedArticle, DisplayMode } from '@/lib/types'
-import { buildFrontmatterAndCallouts, exportToObsidian, openInObsidian, testObsidian } from '@/lib/obsidian'
+import type { Message, ExtractedArticle, DisplayMode, GapEntry } from '@/lib/types'
+import { appendGapEntries, buildFrontmatterAndCallouts, exportToObsidian, openInObsidian, testObsidian } from '@/lib/obsidian'
+
+/** Bound on the local gap log kept when Obsidian isn't configured */
+const GAP_LOG_LIMIT = 500
 
 interface PendingTranslation {
   mode: DisplayMode
@@ -49,6 +52,10 @@ export default defineBackground(() => {
         return testObsidian(await getStorage('obsidianConfig'))
       case 'translate-selection':
         return handleTranslateSelection(message, sender)
+      case 'polish-input':
+        return handlePolishInput(message, sender)
+      case 'record-gap':
+        return handleRecordGap(message)
       case 'export-obsidian':
         return handleExport(message)
       case 'open-in-obsidian':
@@ -281,6 +288,90 @@ async function handleTranslateSelection(
     await sendToTab(tabId, { action: 'selection-done', requestId })
   } catch (err) {
     await fail(explainError(err))
+  }
+}
+
+async function handlePolishInput(
+  message: Extract<Message, { action: 'polish-input' }>,
+  sender: chrome.runtime.MessageSender,
+) {
+  const tabId = sender.tab?.id
+  if (!tabId) return
+
+  const { requestId } = message
+  const fail = (error: string) =>
+    sendToTab(tabId, { action: 'polish-error', requestId, error })
+
+  const [providers, activeModel, quickModel, polishModel] = await Promise.all([
+    getStorage('providers'),
+    getStorage('activeModel'),
+    getStorage('quickModel'),
+    getStorage('polishModel'),
+  ])
+
+  // Polish is latency-sensitive like selection translation, so it prefers the
+  // fast models before falling back to the main one
+  const resolved =
+    resolveActiveProvider(providers, polishModel) ??
+    resolveActiveProvider(providers, quickModel) ??
+    resolveActiveProvider(providers, activeModel)
+  if (!resolved) {
+    await fail('请先在设置中配置服务商和模型')
+    return
+  }
+
+  let reasoningNotified = false
+  try {
+    await streamPolish(
+      resolved.provider,
+      resolved.modelId,
+      message.text,
+      message.context,
+      (chunk) => {
+        sendToTab(tabId, { action: 'polish-chunk', requestId, chunk }).catch(() => {})
+      },
+      () => {
+        if (reasoningNotified) return
+        reasoningNotified = true
+        sendToTab(tabId, { action: 'polish-reasoning', requestId }).catch(() => {})
+      },
+    )
+    await sendToTab(tabId, { action: 'polish-done', requestId })
+  } catch (err) {
+    await fail(explainError(err))
+  }
+}
+
+/**
+ * Expression gaps are worth keeping for the aggregate picture ("14 of this
+ * quarter's 47 gaps were state verbs"), not for re-reading line by line.
+ *
+ * Failures stay silent: this runs after the user has already been shown the
+ * result, and a logging problem must never surface as a writing interruption.
+ */
+async function handleRecordGap(
+  message: Extract<Message, { action: 'record-gap' }>,
+) {
+  if (!message.entries.length) return
+
+  try {
+    const [enabled, config, notePath] = await Promise.all([
+      getStorage('gapRecordEnabled'),
+      getStorage('obsidianConfig'),
+      getStorage('gapNotePath'),
+    ])
+
+    if (enabled && config.apiToken && notePath) {
+      await appendGapEntries(config, notePath, message.entries)
+      return
+    }
+
+    // Not wired to Obsidian: keep a bounded local log so the data still exists
+    const stored = (await chrome.storage.local.get('_gapLog')) as { _gapLog?: GapEntry[] }
+    const log = [...(stored._gapLog ?? []), ...message.entries]
+    await chrome.storage.local.set({ _gapLog: log.slice(-GAP_LOG_LIMIT) })
+  } catch (err) {
+    console.warn('[Contexta] 记录表达缺口失败', err)
   }
 }
 
