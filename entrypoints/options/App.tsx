@@ -11,7 +11,7 @@ const SAVE_DEBOUNCE_MS = 500
 const SECTIONS = [
   { id: 'providers', label: 'AI 服务商' },
   { id: 'presets', label: '翻译规则' },
-  { id: 'obsidian', label: 'Obsidian 导出' },
+  { id: 'obsidian', label: 'Obsidian' },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]['id']
@@ -22,6 +22,8 @@ export default function App() {
   const [quickModel, setQuickModel] = useState<ActiveModel | null>(null)
   const [selectionEnabled, setSelectionEnabled] = useState(true)
   const [inputPolishEnabled, setInputPolishEnabled] = useState(true)
+  const [gapRecordEnabled, setGapRecordEnabled] = useState(false)
+  const [gapNotePath, setGapNotePath] = useState('英语表达缺口.md')
   const [customPresets, setCustomPresets] = useState<TranslationPreset[]>([])
   const [obsidianConfig, setObsidianConfig] = useState<ObsidianConfigType>(DEFAULT_OBSIDIAN_CONFIG)
   const [loading, setLoading] = useState(true)
@@ -77,11 +79,12 @@ export default function App() {
   }, [])
 
   async function loadSettings() {
-    const [p, am, qm, se, cp, oc, ipe] = await Promise.all([
+    const [p, am, qm, se, cp, oc, ipe, gre, gnp] = await Promise.all([
       getStorage('providers'), getStorage('activeModel'),
       getStorage('quickModel'), getStorage('selectionEnabled'),
       getStorage('customPresets'), getStorage('obsidianConfig'),
       getStorage('inputPolishEnabled'),
+      getStorage('gapRecordEnabled'), getStorage('gapNotePath'),
     ])
     // Migration: modelId used to live only on activeModel. Backfill it onto the
     // provider so the field isn't blank for users upgrading from an older build.
@@ -99,6 +102,8 @@ export default function App() {
     setQuickModel(qm ?? null)
     setSelectionEnabled(se !== false)
     setInputPolishEnabled(ipe !== false)
+    setGapRecordEnabled(gre === true)
+    if (gnp) setGapNotePath(gnp)
     setCustomPresets(cp ?? [])
     setObsidianConfig(loadedObsidian)
     providersRef.current = loadedProviders
@@ -129,6 +134,16 @@ export default function App() {
   async function handleInputPolishEnabledChange(enabled: boolean) {
     setInputPolishEnabled(enabled)
     await setStorage('inputPolishEnabled', enabled)
+    flashSaved()
+  }
+  async function handleGapRecordEnabledChange(enabled: boolean) {
+    setGapRecordEnabled(enabled)
+    await setStorage('gapRecordEnabled', enabled)
+    flashSaved()
+  }
+  async function handleGapNotePathChange(path: string) {
+    setGapNotePath(path)
+    await setStorage('gapNotePath', path)
     flashSaved()
   }
   async function handlePresetsChange(presets: TranslationPreset[]) {
@@ -178,7 +193,7 @@ export default function App() {
         ) : section === 'presets' ? (
           <PresetManager customPresets={customPresets} onChange={handlePresetsChange} />
         ) : (
-          <ObsidianConfig config={obsidianConfig} onChange={handleObsidianChange} onFlush={flushSave} />
+          <ObsidianConfig config={obsidianConfig} onChange={handleObsidianChange} gapRecordEnabled={gapRecordEnabled} onGapRecordEnabledChange={handleGapRecordEnabledChange} gapNotePath={gapNotePath} onGapNotePathChange={handleGapNotePathChange} onFlush={flushSave} />
         )}
       </main>
     </div>
