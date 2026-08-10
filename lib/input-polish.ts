@@ -447,8 +447,34 @@ export function handlePolishDone(requestId: string) {
 
 export function handlePolishError(requestId: string, error: string) {
   if (!active || active.requestId !== requestId) return
+  stripLeakedSpaces(active.field)
   showError(error)
   active = null
+}
+
+/**
+ * Only the third space is preventable — the first two are already in the field
+ * by the time the trigger fires. A successful polish replaces the whole field
+ * so they vanish anyway, but a failed one would otherwise leave the user's text
+ * with trailing spaces they never meant to type.
+ *
+ * Deletes at most the spaces we caused, so a user who genuinely ended on a
+ * space keeps it.
+ */
+function stripLeakedSpaces(el: HTMLElement) {
+  if (!isTextInput(el)) return
+  const { value } = el
+  const trailing = value.length - value.replace(/ +$/, '').length
+  const removable = Math.min(trailing, TAP_COUNT - 1)
+  if (!removable) return
+
+  el.focus()
+  el.setSelectionRange(value.length - removable, value.length)
+  try {
+    document.execCommand('delete')
+  } catch {
+    // Leaving stray spaces is better than throwing inside an error handler
+  }
 }
 
 function applyBody(body: string) {
