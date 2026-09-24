@@ -142,7 +142,7 @@ https://github.com/Dearest/contexta
 ### Single purpose description（单一用途说明）
 
 ```
-Contexta has one purpose: translating the text of web articles using an AI model that the user configures, and optionally saving that translation to the user's own Obsidian vault. Every feature serves this single purpose — paragraph translation, selection translation, display-mode switching, and Markdown export are all steps in reading a foreign-language article and keeping the result.
+Contexta has one purpose: helping the user read and write in a foreign language using an AI model that the user configures. Every feature serves this single purpose — paragraph and selection translation help them read foreign-language pages, writing polish turns their mixed Chinese/English draft into idiomatic English, display-mode switching and Markdown export to the user's own Obsidian vault keep the result, and the optional English expression log records which phrases they couldn't yet write.
 ```
 
 ### Permission justifications（逐项权限理由）
@@ -162,9 +162,9 @@ Reads the article content of the tab the user is currently viewing, and only aft
 **Content script on all URLs（`<all_urls>`）**
 
 ```
-Articles worth translating exist on every domain — news sites, personal blogs, documentation, research pages — so there is no finite list of hosts to declare. The content script is what extracts article text, injects translated paragraphs beside the original, and renders the selection-translation popup; all of these require running in the page itself.
+Articles worth translating exist on every domain — news sites, personal blogs, documentation, research pages — so there is no finite list of hosts to declare. Users also write in text fields on any site, so writing polish must be available everywhere too. The content script is what extracts article text, injects translated paragraphs beside the original, renders the selection-translation popup, and rewrites the text field the user is typing in; all of these require running in the page itself.
 
-The script is inert until the user acts: it sends nothing on page load, reads nothing beyond the article body, and only reacts to (a) an explicit translate command from the extension's popup, or (b) the user selecting text and then clicking the translate dot. Selection handling can be turned off entirely in settings. The extension declares no host_permissions, so it holds no ambient authority to make requests on behalf of any site.
+The script is inert until the user acts: it sends nothing on page load, reads nothing beyond the article body, and only reacts to (a) an explicit translate command from the extension's popup, (b) the user selecting text and then clicking the translate dot, or (c) the user pressing the space bar three times in a text field, which sends only that one field's text. Password fields are never read. On feed sites such as X, posts that load while scrolling the page the user asked to translate are translated too; this stops when they leave the page. Selection handling and writing polish can each be turned off entirely in settings. The extension declares no host_permissions, so it holds no ambient authority to make requests on behalf of any site.
 ```
 
 ### Remote code use
