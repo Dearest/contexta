@@ -1,5 +1,6 @@
 import { onMessage } from '@/lib/messages'
 import { extractParagraphs } from '@/lib/extractor'
+import { getSiteRule } from '@/lib/site-rules'
 import {
   injectTranslation,
   injectError,
@@ -31,6 +32,15 @@ export default defineContentScript({
     let currentMode: DisplayMode = 'bilingual'
     let lastDefuddleHtml: string | null = null
     let lastMetadata: ArticleMetadata | null = null
+
+    // Feed pages (site rules) keep adding content after the first extract:
+    // infinite scroll, "show more replies", and X virtualizing cells — a tweet
+    // scrolled far away is unmounted and comes back as a fresh, untranslated
+    // node. The cache replays those without another LLM call.
+    let feedObserver: MutationObserver | null = null
+    let feedTimer: ReturnType<typeof setTimeout> | undefined
+    const idToText = new Map<string, string>()
+    const translationCache = new Map<string, string>()
 
     // Load saved display mode
     const stored = (await chrome.storage.local.get([
@@ -64,6 +74,9 @@ export default defineContentScript({
           removeAllLoadingIndicators()
           return
         case 'clear-translations':
+          stopFeedWatch()
+          idToText.clear()
+          translationCache.clear()
           clearAllTranslations()
           return
         case 'switch-mode':
@@ -139,8 +152,10 @@ export default defineContentScript({
         contentPreview: result.content?.substring(0, 200),
       })
 
-      // Find the content area in the real DOM
-      const contentContainer = findContentContainer(result.content)
+      // Find the content area in the real DOM. A site rule names the content
+      // blocks directly, so the whole page is the search scope.
+      const siteRule = getSiteRule(location.hostname)
+      const contentContainer = siteRule ? document.body : findContentContainer(result.content)
       if (!contentContainer) {
         chrome.runtime.sendMessage({
           action: 'translation-error',
@@ -158,7 +173,9 @@ export default defineContentScript({
         textLength: contentContainer.textContent?.length,
       })
 
-      const paragraphs = extractParagraphs(contentContainer)
+      const paragraphs = extractParagraphs(contentContainer, siteRule?.paragraphSelector)
+      for (const p of paragraphs) idToText.set(p.id, p.plainText)
+      if (siteRule) startFeedWatch(siteRule.paragraphSelector)
 
       lastMetadata = {
         title: result.title || document.title,
@@ -183,7 +200,49 @@ export default defineContentScript({
       })
     }
 
+    function startFeedWatch(selector: string) {
+      stopFeedWatch()
+      // Scoped to the page the user asked for: an SPA navigation shouldn't
+      // silently keep spending tokens on every page they browse afterwards
+      const startUrl = location.href
+      feedObserver = new MutationObserver(() => {
+        if (location.href !== startUrl) {
+          stopFeedWatch()
+          return
+        }
+        clearTimeout(feedTimer)
+        feedTimer = setTimeout(() => translateNewParagraphs(selector), 500)
+      })
+      feedObserver.observe(document.body, { childList: true, subtree: true })
+    }
+
+    function stopFeedWatch() {
+      feedObserver?.disconnect()
+      feedObserver = null
+      clearTimeout(feedTimer)
+    }
+
+    function translateNewParagraphs(selector: string) {
+      // Our own injections also trigger the observer; they extract to nothing
+      const fresh = extractParagraphs(document.body, selector)
+      const toTranslate = []
+      for (const p of fresh) {
+        idToText.set(p.id, p.plainText)
+        const cached = translationCache.get(p.plainText)
+        if (cached !== undefined) {
+          injectTranslation(p.id, cached, currentMode, p.tagMap)
+        } else {
+          toTranslate.push(p)
+        }
+      }
+      if (toTranslate.length === 0) return
+      console.log('[Contexta] Feed: translating', toTranslate.length, 'new paragraphs')
+      chrome.runtime.sendMessage({ action: 'extract-more', paragraphs: toTranslate })
+    }
+
     function handleTranslationResult(message: Extract<Message, { action: 'translation-result' }>) {
+      const text = idToText.get(message.paragraphId)
+      if (text !== undefined) translationCache.set(text, message.translation)
       removeLoading(message.paragraphId)
       removeError(message.paragraphId)
       injectTranslation(message.paragraphId, message.translation, currentMode, message.tagMap)

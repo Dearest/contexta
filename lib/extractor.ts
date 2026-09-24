@@ -81,8 +81,23 @@ function isLeafTextBlock(el: Element): boolean {
   return true
 }
 
-export function extractParagraphs(container: Element): Paragraph[] {
-  const nodes: { el: Element; text: string; plainText: string; tagName: string; tagMap: InlineTagMapping[] }[] = []
+type ExtractedNode = { el: Element; text: string; plainText: string; tagName: string; tagMap: InlineTagMapping[] }
+
+export function extractParagraphs(container: Element, selector?: string): Paragraph[] {
+  const nodes: ExtractedNode[] = []
+
+  if (selector) {
+    // Site rule: the selector names the content blocks exactly, skip heuristics.
+    // Already-extracted blocks are skipped so feed pages can call this again
+    // for whatever scrolled in since.
+    for (const el of container.querySelectorAll(selector)) {
+      if (el.hasAttribute('data-contexta-id') || el.closest('[data-contexta], pre, code')) continue
+      const { text, plainText, tagMap } = extractInlineHtml(el)
+      if (text.length === 0) continue
+      nodes.push({ el, text, plainText, tagName: el.tagName, tagMap })
+    }
+    return toParagraphs(nodes)
+  }
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
     acceptNode(node) {
@@ -127,6 +142,10 @@ export function extractParagraphs(container: Element): Paragraph[] {
     console.log(`[Contexta] Fallback extracted ${nodes.length} leaf text blocks`)
   }
 
+  return toParagraphs(nodes)
+}
+
+function toParagraphs(nodes: ExtractedNode[]): Paragraph[] {
   return nodes.map((n, i) => {
     const id = `ctx-${i}-${Date.now()}`
     n.el.setAttribute('data-contexta-id', id)

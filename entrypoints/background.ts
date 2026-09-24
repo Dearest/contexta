@@ -2,7 +2,7 @@ import { onMessage, sendToTab } from '@/lib/messages'
 import { getStorage } from '@/lib/storage'
 import { translateParagraph, generateSummary, generateQuotes, resolvePreset, isAlreadyTargetLang, testProvider, explainError, streamSelection, streamPolish } from '@/lib/translator'
 import { resolveActiveProvider, fetchModels } from '@/lib/providers'
-import type { Message, ExtractedArticle, DisplayMode, GapEntry } from '@/lib/types'
+import type { Message, ExtractedArticle, DisplayMode, GapEntry, Paragraph, ArticleMetadata } from '@/lib/types'
 import { appendGapEntries, buildFrontmatterAndCallouts, exportToObsidian, openInObsidian, testObsidian } from '@/lib/obsidian'
 
 /** Bound on the local gap log kept when Obsidian isn't configured */
@@ -44,6 +44,8 @@ export default defineBackground(() => {
         return handleTranslate(message)
       case 'extract-result':
         return handleExtractResult(message, sender)
+      case 'extract-more':
+        return handleExtractMore(message, sender)
       case 'fetch-models':
         return handleFetchModels(message)
       case 'test-provider':
@@ -89,6 +91,17 @@ async function handleTranslate(
   await sendToTab(tab.id, { action: 'extract' })
 }
 
+// Translation runs are serialized: a feed page streams in extra batches
+// (`extract-more`) while the first run may still be going. A new `translate`
+// bumps the generation so any queued or running batch from before stops.
+let translateChain: Promise<void> = Promise.resolve()
+let generation = 0
+
+function enqueueTranslation(run: (gen: number) => Promise<void>, gen: number) {
+  translateChain = translateChain.then(() => run(gen)).catch(console.error)
+  return translateChain
+}
+
 async function handleExtractResult(
   message: Extract<Message, { action: 'extract-result' }>,
   sender: chrome.runtime.MessageSender,
@@ -99,11 +112,48 @@ async function handleExtractResult(
   const pending = await getPendingTranslation()
   if (!pending) return
 
-  const { targetLang, presetId } = pending
   const { article } = message
-
   lastArticle = article
   await saveArticle()
+
+  const gen = ++generation
+  await enqueueTranslation(async (g) => {
+    await translateParagraphs(tabId, pending, article.paragraphs, article.metadata, g, true)
+    if (g === generation) await sendToTab(tabId, { action: 'translation-complete' })
+  }, gen)
+}
+
+async function handleExtractMore(
+  message: Extract<Message, { action: 'extract-more' }>,
+  sender: chrome.runtime.MessageSender,
+) {
+  const tabId = sender.tab?.id
+  if (!tabId) return
+
+  const pending = await getPendingTranslation()
+  await loadArticle()
+  if (!pending || !lastArticle) return
+
+  // Appended so retry can find these paragraphs too
+  lastArticle.paragraphs.push(...message.paragraphs)
+  await saveArticle()
+
+  const metadata = lastArticle.metadata
+  await enqueueTranslation(
+    (g) => translateParagraphs(tabId, pending, message.paragraphs, metadata, g, false),
+    generation,
+  )
+}
+
+async function translateParagraphs(
+  tabId: number,
+  pending: PendingTranslation,
+  paragraphs: Paragraph[],
+  metadata: ArticleMetadata,
+  gen: number,
+  reportProgress: boolean,
+) {
+  const { targetLang, presetId } = pending
 
   const [providers, customPresets] = await Promise.all([
     getStorage('providers'),
@@ -121,11 +171,11 @@ async function handleExtractResult(
   }
 
   const preset = resolvePreset(presetId, customPresets)
-  const { paragraphs } = article
   const total = paragraphs.length
 
   // Translate paragraphs sequentially
   for (let i = 0; i < paragraphs.length; i++) {
+    if (gen !== generation) return
     const paragraph = paragraphs[i]
 
     // Skip paragraphs already in the target language
@@ -133,18 +183,20 @@ async function handleExtractResult(
       continue
     }
 
-    await sendToTab(tabId, {
-      action: 'translation-progress',
-      current: i + 1,
-      total,
-    })
+    if (reportProgress) {
+      await sendToTab(tabId, {
+        action: 'translation-progress',
+        current: i + 1,
+        total,
+      })
+    }
 
     try {
       const translation = await translateParagraph({
         provider: resolved.provider,
         modelId: resolved.modelId,
         paragraph,
-        metadata: article.metadata,
+        metadata,
         targetLang,
         preset,
       })
@@ -163,8 +215,6 @@ async function handleExtractResult(
       })
     }
   }
-
-  await sendToTab(tabId, { action: 'translation-complete' })
 }
 
 async function handleRetry(

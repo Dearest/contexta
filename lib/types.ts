@@ -124,6 +124,8 @@ export type Message =
   | { action: 'translate'; mode: DisplayMode; targetLang: string; presetId: string }
   | { action: 'extract' }
   | { action: 'extract-result'; article: ExtractedArticle }
+  // Feed pages (site rules): paragraphs that appeared after the first extract
+  | { action: 'extract-more'; paragraphs: Paragraph[] }
   | { action: 'translation-result'; paragraphId: string; translation: string; tagMap?: InlineTagMapping[] }
   | { action: 'translation-error'; paragraphId: string; error: string }
   | { action: 'translation-progress'; current: number; total: number }

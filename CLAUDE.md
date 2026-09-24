@@ -44,6 +44,7 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 | `translator.ts` | `translateParagraph()` via Vercel AI SDK `generateText()` + `isAlreadyTargetLang()` for language detection |
 | `extractor.ts`  | `extractParagraphs(container)` — TreeWalker over text block tags, `getTextPreservingBreaks()` for `<br>` |
 | `injector.ts`   | `injectTranslation` (copies className, handles `\n`→`<br>`), `switchDisplayMode`, loading/error states   |
+| `site-rules.ts` | Per-host `paragraphSelector` overrides (X: tweet bodies + long-form Article blocks). Bypasses container detection + fallback. |
 | `messages.ts`   | `sendToBackground`, `sendToTab`, `onMessage` — Chrome message wrappers                                   |
 | `obsidian.ts`   | `buildFrontmatterAndCallouts` + `exportToObsidian` (PUT to local REST API). No Turndown (runs in SW).    |
 | `selection.ts`  | Selection translation UI — green dot + popup, all inside a Shadow DOM. Owns the streaming render state.   |
@@ -57,6 +58,10 @@ Popup (React UI) → Background (Service Worker) → Content Script (DOM)
 2. Content Script: Defuddle extracts article HTML → `findContentContainer()` locates real DOM container (prefers single `<article>` element, falls back to heuristic) → `extractParagraphs()` finds text blocks → sends `extract-result` with paragraphs + `contentHtml` to Background
 3. Background: Skips paragraphs already in target language (`isAlreadyTargetLang` — CJK ratio for Chinese, Latin ratio for English). Loops remaining paragraphs sequentially, each with prev/next context. Pushes `translation-result` per paragraph.
 4. Content Script: Injects same-tag element after original with `data-contexta="translation"`, copies `className` from original for style parity. Converts `\n` in translation to `<br>`. Bilingual mode adds top dashed green line; target-only hides originals.
+
+## Feed Pages (site rules)
+
+Hosts in `lib/site-rules.ts` (X) skip container detection: `extractParagraphs(document.body, selector)` takes only the blocks the selector names, so names/handles/buttons are never translated. After the first extract, Content Script keeps a `MutationObserver` (debounced 500ms) and sends newly appeared blocks as `extract-more`; Background appends them to `lastArticle` and runs them through the same serialized queue (`generation` counter cancels stale batches on a new `translate`). X unmounts far-away cells, so a text→translation cache in Content Script re-injects remounted tweets without an LLM call. The observer stops on URL change (SPA navigation) and on `clear-translations`.
 
 ## Selection Translation Flow
 
